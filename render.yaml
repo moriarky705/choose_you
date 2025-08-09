@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: choose-you
+    env: ruby
+    buildCommand: bundle install && npm install && npm run build
+    startCommand: bundle exec rails server -b 0.0.0.0 -p $PORT
+    envVars:
+      - key: RAILS_ENV
+        value: production
+      - key: RAILS_MASTER_KEY
+        sync: false
+      - key: RAILS_LOG_TO_STDOUT
+        value: enabled
+      - key: RAILS_SERVE_STATIC_FILES
+        value: enabled
