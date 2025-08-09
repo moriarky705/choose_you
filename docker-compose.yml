@@ -1,0 +1,13 @@
+# version: "3.9"
+services:
+  app:
+    build: .
+    working_dir: /rails
+    volumes:
+      - .:/rails
+    ports:
+      - "3000:3000"
+    environment:
+      - RAILS_ENV=development
+      - PORT=3000
+    command: bash -c "bundle install && bin/dev"

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title><%= content_for(:title) || "Room Selector" %></title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <%= csrf_meta_tags %>
+    <%= csp_meta_tag %>
+
+    <%= yield :head %>
+
+    <link rel="icon" href="/icon.png" type="image/png">
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/icon.png">
+
+  <%# Tailwind CSS CDN for development %>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <%# application.css (Propshaft) %>
+  <%= stylesheet_link_tag "application", "data-turbo-track": "reload" %>
+  <%# esbuild output application.js is placed in app/assets/builds and picked up by Propshaft %>
+  <script type="module" src="<%= asset_path 'application.js' %>?v=<%= Time.current.to_i %>"></script>
+  </head>
+
+  <body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4">
+      <% flash.each do |type, msg| %>
+        <div class="mb-4 p-3 rounded text-sm <%= type.to_s == 'alert' ? 'bg-red-100 text-red-800 border border-red-200' : 'bg-green-100 text-green-800 border border-green-200' %>">
+          <%= msg %>
+        </div>
+      <% end %>
+      <%= yield %>
+    </div>
+  </body>
+</html>
