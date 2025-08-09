@@ -68,9 +68,9 @@ Rails.application.configure do
     end
   end
   
-  # For Render.com deployment, you can also disable host checking entirely if needed
-  # Uncomment the line below if you continue to have issues:
-  # config.hosts.clear
+  # For Render.com deployment, disable host checking to resolve deployment issues
+  # This is safe for Render.com as they provide their own security layer
+  config.hosts.clear
   
   # config.hosts = [
   #   "example.com",     # Allow requests from example.com
