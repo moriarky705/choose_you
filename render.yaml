@@ -13,3 +13,5 @@ services:
         value: enabled
       - key: RAILS_SERVE_STATIC_FILES
         value: enabled
+      - key: ALLOWED_HOSTS
+        value: choose-you.onrender.com

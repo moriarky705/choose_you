@@ -58,8 +58,19 @@ Rails.application.configure do
   config.i18n.fallbacks = true
 
   # Enable DNS rebinding protection and other `Host` header attacks.
-  # Allow requests from Render.com hostname
+  # Allow requests from Render.com hostname and any configured hosts
   config.hosts << "choose-you.onrender.com"
+  
+  # Allow additional hosts from environment variable
+  if ENV['ALLOWED_HOSTS'].present?
+    ENV['ALLOWED_HOSTS'].split(',').each do |host|
+      config.hosts << host.strip
+    end
+  end
+  
+  # For Render.com deployment, you can also disable host checking entirely if needed
+  # Uncomment the line below if you continue to have issues:
+  # config.hosts.clear
   
   # config.hosts = [
   #   "example.com",     # Allow requests from example.com
