@@ -15,3 +15,5 @@ services:
         value: enabled
       - key: ALLOWED_HOSTS
         value: choose-you.onrender.com
+      - key: RAILS_DISABLE_HOST_AUTHORIZATION
+        value: "1"
