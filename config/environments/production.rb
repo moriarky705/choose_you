@@ -3,6 +3,9 @@ require "active_support/core_ext/integer/time"
 Rails.application.configure do
   # Settings specified here will take precedence over those in config/application.rb.
 
+  # Completely disable Host Authorization middleware for Render.com
+  config.middleware.delete ActionDispatch::HostAuthorization
+
   # Code is not reloaded between requests.
   config.enable_reloading = false
 

@@ -36,10 +36,16 @@ module Workspace
     # config.time_zone = "Central Time (US & Canada)"
     # config.eager_load_paths << Rails.root.join("extras")
 
-    # Properly configure hosts for Render.com deployment
+    # Completely disable Host Authorization for Render.com deployment
     if Rails.env.production?
+      # Method 1: Disable the middleware entirely
+      config.middleware.delete ActionDispatch::HostAuthorization
+      
+      # Method 2: Configure hosts (backup)
       config.hosts << "choose-you.onrender.com"
       config.hosts << /.*\.onrender\.com/
+      
+      # Method 3: Exclude all requests (backup)
       config.host_authorization = { exclude: ->(request) { true } }
     end
 
