@@ -57,7 +57,9 @@ Rails.application.configure do
   # the I18n.default_locale when a translation cannot be found).
   config.i18n.fallbacks = true
 
-  # Enable DNS rebinding protection and other `Host` header attacks.
-  # Allow requests from Render.com hostname and any configured hosts
+  # Host Authorization configuration for Render.com
+  config.hosts.clear
   config.hosts << "choose-you.onrender.com"
+  config.hosts << /.*\.onrender\.com/
+  config.host_authorization = { exclude: ->(request) { true } }
 end

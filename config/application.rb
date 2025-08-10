@@ -36,8 +36,12 @@ module Workspace
     # config.time_zone = "Central Time (US & Canada)"
     # config.eager_load_paths << Rails.root.join("extras")
 
-    # Disable Host Authorization for Render.com deployment
-    config.hosts.clear if Rails.env.production?
+    # Properly configure hosts for Render.com deployment
+    if Rails.env.production?
+      config.hosts << "choose-you.onrender.com"
+      config.hosts << /.*\.onrender\.com/
+      config.host_authorization = { exclude: ->(request) { true } }
+    end
 
     # Don't generate system test files.
     config.generators.system_tests = nil
