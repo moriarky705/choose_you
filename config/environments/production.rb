@@ -60,23 +60,4 @@ Rails.application.configure do
   # Enable DNS rebinding protection and other `Host` header attacks.
   # Allow requests from Render.com hostname and any configured hosts
   config.hosts << "choose-you.onrender.com"
-  
-  # Allow additional hosts from environment variable
-  if ENV['ALLOWED_HOSTS'].present?
-    ENV['ALLOWED_HOSTS'].split(',').each do |host|
-      config.hosts << host.strip
-    end
-  end
-  
-  # For Render.com deployment, disable host checking to resolve deployment issues
-  # This is safe for Render.com as they provide their own security layer
-  config.hosts.clear
-  
-  # config.hosts = [
-  #   "example.com",     # Allow requests from example.com
-  #   /.*\.example\.com/ # Allow requests from subdomains like `www.example.com`
-  # ]
-  #
-  # Skip DNS rebinding protection for all requests in production (Render.com compatibility)
-  config.host_authorization = { exclude: ->(request) { true } }
 end
