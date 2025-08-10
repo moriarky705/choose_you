@@ -2,7 +2,7 @@ services:
   - type: web
     name: choose-you
     env: ruby
-    buildCommand: RAILS_ENV=production bundle install && npm install && npm run build:production && RAILS_ENV=production bundle exec rails assets:precompile
+    buildCommand: bundle install && npm install && NODE_ENV=production npm run build:production
     startCommand: RAILS_ENV=production bundle exec rails server -b 0.0.0.0 -p $PORT
     envVars:
       - key: RAILS_ENV

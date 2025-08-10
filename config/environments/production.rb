@@ -24,10 +24,9 @@ Rails.application.configure do
   # Enable serving of images, stylesheets, and JavaScripts from an asset server.
   # config.asset_host = "http://assets.example.com"
 
-  # Enable static file serving for Render.com and ensure assets are compiled
+  # Enable static file serving for Render.com (propshaft configuration)
   config.public_file_server.enabled = true
-  config.assets.compile = false
-  config.assets.digest = true
+  # Remove traditional asset pipeline settings since we're using propshaft
 
   # Assume all access to the app is happening through a SSL-terminating reverse proxy.
   config.assume_ssl = true
