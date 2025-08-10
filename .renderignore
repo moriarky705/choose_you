@@ -1,0 +1,3 @@
+# Ignore Docker files to force Render.com to use native build
+Dockerfile*
+docker-compose*
