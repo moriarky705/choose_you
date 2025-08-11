@@ -27,17 +27,11 @@ Rails.application.configure do
   # Enable static file serving for Render.com (propshaft configuration)
   config.public_file_server.enabled = true
   
-  # Configure asset serving for Propshaft on Render.com
-  config.assets.configure do |env|
-    env.cache = Propshaft::Resolver::Store.new(Rails.root.join("tmp/cache/assets"))
-  end
-  
-  # Propshaft asset configuration
+  # Configure asset serving for Propshaft + jsbundling-rails on Render.com
   config.assets.paths << Rails.root.join("app/assets/stylesheets")
   config.assets.paths << Rails.root.join("app/assets/builds")
   
-  # Remove traditional asset pipeline settings since we're using propshaft
-  # Force asset serving through Rails
+  # Force asset serving through Rails for jsbundling-rails
   config.serve_static_files = true
 
   # Assume all access to the app is happening through a SSL-terminating reverse proxy.

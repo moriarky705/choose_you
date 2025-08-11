@@ -18,8 +18,8 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <%# application.css (Propshaft) %>
   <%= stylesheet_link_tag "application", "data-turbo-track": "reload" %>
-  <%# esbuild output application.js %>
-  <%= javascript_importmap_tags %>
+  <%# esbuild output application.js - use javascript_include_tag for jsbundling-rails %>
+  <%= javascript_include_tag "application", "data-turbo-track": "reload", defer: true %>
   </head>
 
   <body class="bg-gray-50 min-h-screen">
