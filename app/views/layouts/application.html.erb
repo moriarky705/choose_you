@@ -18,8 +18,8 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <%# application.css (Propshaft) %>
   <%= stylesheet_link_tag "application", "data-turbo-track": "reload" %>
-  <%# esbuild output application.js is placed in app/assets/builds and picked up by Propshaft %>
-  <script type="module" src="<%= asset_path 'application.js' %>?v=<%= Time.current.to_i %>"></script>
+  <%# esbuild output application.js %>
+  <%= javascript_importmap_tags %>
   </head>
 
   <body class="bg-gray-50 min-h-screen">

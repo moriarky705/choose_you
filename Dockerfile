@@ -19,7 +19,7 @@ RUN npm install
 # Copy application code
 COPY . .
 
-# Build JavaScript assets (propshaft handles CSS automatically)
+# Build JavaScript assets with esbuild (propshaft handles CSS automatically)
 RUN npm run build:production
 
 # Set production environment

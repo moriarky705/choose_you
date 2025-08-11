@@ -26,7 +26,19 @@ Rails.application.configure do
 
   # Enable static file serving for Render.com (propshaft configuration)
   config.public_file_server.enabled = true
+  
+  # Configure asset serving for Propshaft on Render.com
+  config.assets.configure do |env|
+    env.cache = Propshaft::Resolver::Store.new(Rails.root.join("tmp/cache/assets"))
+  end
+  
+  # Propshaft asset configuration
+  config.assets.paths << Rails.root.join("app/assets/stylesheets")
+  config.assets.paths << Rails.root.join("app/assets/builds")
+  
   # Remove traditional asset pipeline settings since we're using propshaft
+  # Force asset serving through Rails
+  config.serve_static_files = true
 
   # Assume all access to the app is happening through a SSL-terminating reverse proxy.
   config.assume_ssl = true
@@ -66,4 +78,8 @@ Rails.application.configure do
   config.hosts << "choose-you.onrender.com"
   config.hosts << /.*\.onrender\.com/
   config.host_authorization = { exclude: ->(request) { true } }
+  
+  # CSRF protection configuration for Render.com
+  config.action_controller.forgery_protection_origin_check = false
+  config.action_controller.allow_forgery_protection = true
 end
