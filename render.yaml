@@ -2,12 +2,10 @@ services:
   - type: web
     name: choose-you
     runtime: ruby
-    buildCommand: |
-      bundle install
-      npm install
-      npm run build:production
+    buildCommand: bundle install && npm ci && npm run build:production
     startCommand: bundle exec rails server -b 0.0.0.0 -p $PORT
     env: ruby-3.2.9
+    plan: free
     envVars:
       - key: RAILS_ENV
         value: production
@@ -17,5 +15,3 @@ services:
         value: "1"
       - key: SECRET_KEY_BASE
         generateValue: true
-    autoDeploy: true
-    branch: main
