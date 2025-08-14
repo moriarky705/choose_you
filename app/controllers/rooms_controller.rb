@@ -43,8 +43,15 @@ class RoomsController < ApplicationController
     name = params.require(:name)
     participant = RoomRegistry.add_participant(room_id: params[:id], name:)
     cookies.permanent.signed[participant_cookie_key(params[:id])] = participant.token if participant
-    ActionCable.server.broadcast("room_#{params[:id]}", { type: 'participants', participants: RoomRegistry.participant_list(params[:id]).map { |p| { name: p.name } } })
-  redirect_to room_path(params[:id], participant_token: participant&.token)
+    
+    # ActionCableでブロードキャスト（エラー時はスキップ）
+    begin
+      ActionCable.server.broadcast("room_#{params[:id]}", { type: 'participants', participants: RoomRegistry.participant_list(params[:id]).map { |p| { name: p.name } } })
+    rescue => e
+      Rails.logger.warn "ActionCable broadcast failed: #{e.message}"
+    end
+    
+    redirect_to room_path(params[:id], participant_token: participant&.token)
   end
 
   def select
@@ -60,7 +67,14 @@ class RoomsController < ApplicationController
       redirect_to room_path(params[:id], count: count), alert: "参加者数(#{participants.size})以下の人数を指定してください" and return
     end
     selected = RoomRegistry.select_random(room_id: params[:id], count:)
-    ActionCable.server.broadcast("room_#{params[:id]}", { type: 'selection', selected: selected.map { |p| { name: p.name } }, count: count })
+    
+    # ActionCableでブロードキャスト（エラー時はスキップ）
+    begin
+      ActionCable.server.broadcast("room_#{params[:id]}", { type: 'selection', selected: selected.map { |p| { name: p.name } }, count: count })
+    rescue => e
+      Rails.logger.warn "ActionCable broadcast failed: #{e.message}"
+    end
+    
     redirect_to room_path(params[:id], count: count)
   end
 
