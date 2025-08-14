@@ -15,3 +15,12 @@ services:
         value: "1"
       - key: SECRET_KEY_BASE
         generateValue: true
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: choose-you-redis
+
+  - type: redis
+    name: choose-you-redis
+    plan: free
+    maxmemoryPolicy: allkeys-lru

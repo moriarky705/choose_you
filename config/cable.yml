@@ -5,6 +5,6 @@ test:
   adapter: test
 
 production:
-  # 無料プランではasyncアダプターを使用（単一インスタンス前提）
-  # 複数ブラウザ間の同期は制限されるが、手動更新で対応可能
-  adapter: async
+  adapter: redis
+  url: <%= ENV.fetch("REDIS_URL") { "redis://localhost:6379/1" } %>
+  channel_prefix: choose_you_production

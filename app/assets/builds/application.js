@@ -9033,6 +9033,10 @@
       this.subscription = consumer_default.subscriptions.create({ channel: "RoomChannel", room_id: this.roomIdValue }, {
         connected: () => {
           console.log("ActionCable connected for room:", this.roomIdValue);
+          if (this.pollingTimer) {
+            clearInterval(this.pollingTimer);
+            this.pollingTimer = null;
+          }
         },
         disconnected: () => {
           console.log("ActionCable disconnected for room:", this.roomIdValue);
@@ -9053,9 +9057,10 @@
       if (this.pollingTimer) {
         clearInterval(this.pollingTimer);
       }
+      const interval = window.location.hostname.includes("onrender.com") ? 12e4 : 3e4;
       this.pollingTimer = setInterval(() => {
         this.fetchUpdates();
-      }, 3e4);
+      }, interval);
     }
     async fetchUpdates() {
       try {

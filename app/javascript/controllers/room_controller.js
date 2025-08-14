@@ -13,6 +13,11 @@ export default class extends Controller {
     this.subscription = consumer.subscriptions.create({ channel: 'RoomChannel', room_id: this.roomIdValue }, {
       connected: () => {
         console.log('ActionCable connected for room:', this.roomIdValue)
+        // ActionCableが接続されたらポーリングを停止
+        if (this.pollingTimer) {
+          clearInterval(this.pollingTimer)
+          this.pollingTimer = null
+        }
       },
       disconnected: () => {
         console.log('ActionCable disconnected for room:', this.roomIdValue)
@@ -29,7 +34,7 @@ export default class extends Controller {
       }
     })
     
-    // フォールバック: 定期的なポーリング（無料プラン対策）
+    // フォールバック: 定期的なポーリング（ActionCable接続まで）
     this.startPolling()
   }
   
@@ -39,10 +44,12 @@ export default class extends Controller {
       clearInterval(this.pollingTimer)
     }
     
-    // 30秒ごとにページを部分更新
+    // Redisが利用可能な場合は120秒、そうでなければ30秒ごと
+    const interval = window.location.hostname.includes('onrender.com') ? 120000 : 30000
+    
     this.pollingTimer = setInterval(() => {
       this.fetchUpdates()
-    }, 30000)
+    }, interval)
   }
   
   async fetchUpdates() {
