@@ -9116,10 +9116,6 @@
   // app/javascript/controllers/index.js
   window.Stimulus = Application.start();
   Stimulus.register("room", room_controller_default);
-
-  // app/javascript/channels/index.js
-  var import_meta = {};
-  var channels = import_meta.globEager("./*_channel.js");
 })();
 /*! Bundled license information:
 
