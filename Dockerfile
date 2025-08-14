@@ -17,14 +17,12 @@ RUN apt-get update && apt-get install -y \
 
 # Set bundle configuration for production
 ENV BUNDLE_WITHOUT=development:test
-ENV BUNDLE_DEPLOYMENT=1
 
 # Copy dependency files
 COPY Gemfile Gemfile.lock ./
 
 # Install Ruby gems separately with error handling
-RUN bundle config set --local deployment 'true' && \
-    bundle config set --local without 'development test' && \
+RUN bundle config set --local without 'development test' && \
     bundle install --jobs 2 --retry 3
 
 # Copy package files and install Node dependencies
