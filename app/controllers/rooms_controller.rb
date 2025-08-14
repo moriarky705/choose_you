@@ -47,8 +47,9 @@ class RoomsController < ApplicationController
     # ActionCableでブロードキャスト（エラー時はスキップ）
     begin
       ActionCable.server.broadcast("room_#{params[:id]}", { type: 'participants', participants: RoomRegistry.participant_list(params[:id]).map { |p| { name: p.name } } })
+      Rails.logger.info "📡 ActionCable: Broadcasted participants update for room #{params[:id]}"
     rescue => e
-      Rails.logger.warn "ActionCable broadcast failed: #{e.message}"
+      Rails.logger.warn "⚠️  ActionCable broadcast failed: #{e.message}"
     end
     
     redirect_to room_path(params[:id], participant_token: participant&.token)
@@ -71,8 +72,9 @@ class RoomsController < ApplicationController
     # ActionCableでブロードキャスト（エラー時はスキップ）
     begin
       ActionCable.server.broadcast("room_#{params[:id]}", { type: 'selection', selected: selected.map { |p| { name: p.name } }, count: count })
+      Rails.logger.info "📡 ActionCable: Broadcasted selection update for room #{params[:id]}"
     rescue => e
-      Rails.logger.warn "ActionCable broadcast failed: #{e.message}"
+      Rails.logger.warn "⚠️  ActionCable broadcast failed: #{e.message}"
     end
     
     redirect_to room_path(params[:id], count: count)

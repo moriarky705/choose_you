@@ -3,6 +3,8 @@
 class RoomChannel < ApplicationCable::Channel
   def subscribed
     room_id = params[:room_id]
+    Rails.logger.info "🔗 ActionCable: Client subscribed to room #{room_id}"
+    
     stream_from "room_#{room_id}"
     
     # 参加者一覧を送信
@@ -18,6 +20,7 @@ class RoomChannel < ApplicationCable::Channel
   end
 
   def unsubscribed
+    Rails.logger.info "🔌 ActionCable: Client unsubscribed"
     # パーティシパントの離脱（自動判定は難しいので今回は何もしない）
   end
 end
