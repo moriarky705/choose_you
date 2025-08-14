@@ -76,4 +76,11 @@ Rails.application.configure do
   # CSRF protection configuration for Render.com
   config.action_controller.forgery_protection_origin_check = false
   config.action_controller.allow_forgery_protection = true
+  
+  # ActionCable configuration for Render.com
+  config.action_cable.url = "wss://choose-you.onrender.com/cable"
+  config.action_cable.allowed_request_origins = [
+    "https://choose-you.onrender.com",
+    /https:\/\/.*\.onrender\.com/
+  ]
 end

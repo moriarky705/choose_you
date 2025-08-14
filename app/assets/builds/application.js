@@ -9021,15 +9021,24 @@
   }
 
   // app/javascript/channels/consumer.js
-  var consumer_default = createConsumer3();
+  var wsUrl = window.location.hostname.includes("onrender.com") ? `wss://${window.location.host}/cable` : void 0;
+  var consumer_default = createConsumer3(wsUrl);
 
   // app/javascript/controllers/room_controller.js
   var room_controller_default = class extends Controller {
     static values = { roomId: String, owner: Boolean };
     static targets = ["participants", "selectionList", "countInput", "selectionHeader", "inviteUrl", "copyFeedback", "copyButton"];
     connect() {
+      console.log("Room controller connecting...", this.roomIdValue);
       this.subscription = consumer_default.subscriptions.create({ channel: "RoomChannel", room_id: this.roomIdValue }, {
+        connected: () => {
+          console.log("ActionCable connected for room:", this.roomIdValue);
+        },
+        disconnected: () => {
+          console.log("ActionCable disconnected for room:", this.roomIdValue);
+        },
         received: (data) => {
+          console.log("ActionCable received:", data);
           if (data.type === "participants") {
             this.renderParticipants(data.participants);
           } else if (data.type === "selection") {

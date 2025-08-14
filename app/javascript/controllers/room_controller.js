@@ -7,8 +7,16 @@ export default class extends Controller {
   static targets = ["participants", "selectionList", "countInput", "selectionHeader", "inviteUrl", "copyFeedback", "copyButton"]
 
   connect() {
+    console.log('Room controller connecting...', this.roomIdValue)
     this.subscription = consumer.subscriptions.create({ channel: 'RoomChannel', room_id: this.roomIdValue }, {
+      connected: () => {
+        console.log('ActionCable connected for room:', this.roomIdValue)
+      },
+      disconnected: () => {
+        console.log('ActionCable disconnected for room:', this.roomIdValue)
+      },
       received: (data) => {
+        console.log('ActionCable received:', data)
         if (data.type === 'participants') {
           this.renderParticipants(data.participants)
         } else if (data.type === 'selection') {
