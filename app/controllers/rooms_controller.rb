@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 class RoomsController < ApplicationController
-  before_action :load_room, only: %i[show join select]
+  before_action :load_room, only: %i[show join select updates]
 
   def new
   end
@@ -62,6 +62,21 @@ class RoomsController < ApplicationController
     selected = RoomRegistry.select_random(room_id: params[:id], count:)
     ActionCable.server.broadcast("room_#{params[:id]}", { type: 'selection', selected: selected.map { |p| { name: p.name } }, count: count })
     redirect_to room_path(params[:id], count: count)
+  end
+
+  def updates
+    return head :not_found unless @room
+    
+    participants = RoomRegistry.participant_list(params[:id])
+    data = {
+      participants: participants.map { |p| { name: p.name } }
+    }
+    
+    if @room.last_selection
+      data[:selection] = @room.last_selection
+    end
+    
+    render json: data
   end
 
   private

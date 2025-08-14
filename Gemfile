@@ -16,8 +16,7 @@ gem "stimulus-rails"
 # gem "cssbundling-rails"  # Commented out - using Tailwind CSS CDN instead
 # Use Redis adapter to run Action Cable in production
 # gem "redis", ">= 4.0.1"  # Not needed - using async adapter
-# Use PostgreSQL adapter for ActionCable in production (Render.com)
-gem "pg", "~> 1.1"
+# PostgreSQL not needed for free tier - using async adapter with polling fallback
 
 # Use Active Model has_secure_password [https://guides.rubyonrails.org/active_model_basics.html#securepassword]
 # gem "bcrypt", "~> 3.1.7"

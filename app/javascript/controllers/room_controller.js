@@ -8,12 +8,16 @@ export default class extends Controller {
 
   connect() {
     console.log('Room controller connecting...', this.roomIdValue)
+    
+    // ActionCableでリアルタイム更新を試行
     this.subscription = consumer.subscriptions.create({ channel: 'RoomChannel', room_id: this.roomIdValue }, {
       connected: () => {
         console.log('ActionCable connected for room:', this.roomIdValue)
       },
       disconnected: () => {
         console.log('ActionCable disconnected for room:', this.roomIdValue)
+        // 接続が切れた場合はポーリングにフォールバック
+        this.startPolling()
       },
       received: (data) => {
         console.log('ActionCable received:', data)
@@ -24,10 +28,52 @@ export default class extends Controller {
         }
       }
     })
+    
+    // フォールバック: 定期的なポーリング（無料プラン対策）
+    this.startPolling()
+  }
+  
+  startPolling() {
+    // 既存のポーリングがあれば停止
+    if (this.pollingTimer) {
+      clearInterval(this.pollingTimer)
+    }
+    
+    // 30秒ごとにページを部分更新
+    this.pollingTimer = setInterval(() => {
+      this.fetchUpdates()
+    }, 30000)
+  }
+  
+  async fetchUpdates() {
+    try {
+      const response = await fetch(`/rooms/${this.roomIdValue}/updates`, {
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        }
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (data.participants) {
+          this.renderParticipants(data.participants)
+        }
+        if (data.selection) {
+          this.renderSelection(data.selection.selected, data.selection.count)
+        }
+      }
+    } catch (error) {
+      console.log('Polling update failed:', error)
+    }
   }
 
   disconnect() {
     if (this.subscription) consumer.subscriptions.remove(this.subscription)
+    if (this.pollingTimer) {
+      clearInterval(this.pollingTimer)
+      this.pollingTimer = null
+    }
   }
 
   renderParticipants(list) {

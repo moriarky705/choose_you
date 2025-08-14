@@ -6669,13 +6669,13 @@
     }
   };
   function add(map, key, value) {
-    fetch(map, key).add(value);
+    fetch2(map, key).add(value);
   }
   function del(map, key, value) {
-    fetch(map, key).delete(value);
+    fetch2(map, key).delete(value);
     prune(map, key);
   }
-  function fetch(map, key) {
+  function fetch2(map, key) {
     let values = map.get(key);
     if (!values) {
       values = /* @__PURE__ */ new Set();
@@ -9036,6 +9036,7 @@
         },
         disconnected: () => {
           console.log("ActionCable disconnected for room:", this.roomIdValue);
+          this.startPolling();
         },
         received: (data) => {
           console.log("ActionCable received:", data);
@@ -9046,9 +9047,43 @@
           }
         }
       });
+      this.startPolling();
+    }
+    startPolling() {
+      if (this.pollingTimer) {
+        clearInterval(this.pollingTimer);
+      }
+      this.pollingTimer = setInterval(() => {
+        this.fetchUpdates();
+      }, 3e4);
+    }
+    async fetchUpdates() {
+      try {
+        const response = await fetch(`/rooms/${this.roomIdValue}/updates`, {
+          headers: {
+            "Accept": "application/json",
+            "X-Requested-With": "XMLHttpRequest"
+          }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.participants) {
+            this.renderParticipants(data.participants);
+          }
+          if (data.selection) {
+            this.renderSelection(data.selection.selected, data.selection.count);
+          }
+        }
+      } catch (error2) {
+        console.log("Polling update failed:", error2);
+      }
     }
     disconnect() {
       if (this.subscription) consumer_default.subscriptions.remove(this.subscription);
+      if (this.pollingTimer) {
+        clearInterval(this.pollingTimer);
+        this.pollingTimer = null;
+      }
     }
     renderParticipants(list) {
       if (!this.hasParticipantsTarget) return;
