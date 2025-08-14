@@ -50,7 +50,9 @@ export default class extends Controller {
       if (this.selectionHeaderTarget.hidden) this.selectionHeaderTarget.hidden = false
       this.selectionHeaderTarget.textContent = '抽選結果'
     }
-  }  async copyInvite() {
+  }
+
+  async copyInvite() {
     if (!this.hasInviteUrlTarget) return
     const text = this.inviteUrlTarget.textContent.trim()
     const show = (msg, ms=1500, cls='text-green-600') => {
