@@ -8,24 +8,26 @@ export default class extends Controller {
 
   connect() {
     console.log('Room controller connecting...', this.roomIdValue)
+    this.isProduction = window.location.hostname.includes('onrender.com')
     
     // ActionCableでリアルタイム更新を試行
     this.subscription = consumer.subscriptions.create({ channel: 'RoomChannel', room_id: this.roomIdValue }, {
       connected: () => {
-        console.log('ActionCable connected for room:', this.roomIdValue)
+        console.log('✅ ActionCable connected for room:', this.roomIdValue)
         // ActionCableが接続されたらポーリングを停止
         if (this.pollingTimer) {
           clearInterval(this.pollingTimer)
           this.pollingTimer = null
+          console.log('⏸️ Polling stopped - ActionCable active')
         }
       },
       disconnected: () => {
-        console.log('ActionCable disconnected for room:', this.roomIdValue)
-        // 接続が切れた場合はポーリングにフォールバック
+        console.log('❌ ActionCable disconnected for room:', this.roomIdValue)
+        // 本番環境（Redis利用時）でも接続が切れた場合はポーリングにフォールバック
         this.startPolling()
       },
       received: (data) => {
-        console.log('ActionCable received:', data)
+        console.log('📡 ActionCable received:', data)
         if (data.type === 'participants') {
           this.renderParticipants(data.participants)
         } else if (data.type === 'selection') {
@@ -34,8 +36,13 @@ export default class extends Controller {
       }
     })
     
-    // フォールバック: 定期的なポーリング（ActionCable接続まで）
-    this.startPolling()
+    // 開発環境でのみポーリングを開始（本番環境はActionCableを優先）
+    if (!this.isProduction) {
+      console.log('🔄 Starting polling for development environment')
+      this.startPolling()
+    } else {
+      console.log('🚀 Production mode - relying on ActionCable with Redis')
+    }
   }
   
   startPolling() {
@@ -44,10 +51,13 @@ export default class extends Controller {
       clearInterval(this.pollingTimer)
     }
     
-    // Redisが利用可能な場合は120秒、そうでなければ30秒ごと
-    const interval = window.location.hostname.includes('onrender.com') ? 120000 : 30000
+    // 開発環境でのポーリング間隔（30秒）
+    const interval = 30000
+    
+    console.log(`🔄 Starting polling every ${interval/1000} seconds for room:`, this.roomIdValue)
     
     this.pollingTimer = setInterval(() => {
+      console.log('📊 Polling for updates...')
       this.fetchUpdates()
     }, interval)
   }
@@ -152,5 +162,11 @@ export default class extends Controller {
     } catch (e) {
       showErr(e)
     }
+  }
+  
+  // 手動更新メソッド
+  refreshUpdates() {
+    console.log('🔄 Manual refresh requested')
+    this.fetchUpdates()
   }
 }
