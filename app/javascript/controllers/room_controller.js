@@ -26,9 +26,16 @@ export default class extends Controller {
         // 本番環境（Redis利用時）でも接続が切れた場合はポーリングにフォールバック
         this.startPolling()
       },
+      rejected: () => {
+        console.log('🚫 ActionCable connection rejected for room:', this.roomIdValue)
+        // 接続が拒否された場合もポーリングにフォールバック
+        this.startPolling()
+      },
       received: (data) => {
         console.log('📡 ActionCable received:', data)
-        if (data.type === 'participants') {
+        if (data.type === 'ping') {
+          console.log('🏓 ActionCable ping received:', data.message)
+        } else if (data.type === 'participants') {
           this.renderParticipants(data.participants)
         } else if (data.type === 'selection') {
           if (data.selected) this.renderSelection(data.selected, data.count)
