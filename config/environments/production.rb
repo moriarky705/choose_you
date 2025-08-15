@@ -24,18 +24,11 @@ Rails.application.configure do
   # Enable serving of images, stylesheets, and JavaScripts from an asset server.
   # config.asset_host = "http://assets.example.com"
 
-  # Enable static file serving for Render.com (propshaft configuration)
+  # Enable static file serving for Render.com
   config.public_file_server.enabled = true
   
-  # Configure asset serving for Propshaft + jsbundling-rails on Render.com
-  config.assets.paths << Rails.root.join("app/assets/stylesheets")
-  config.assets.paths << Rails.root.join("app/assets/builds")
-  
-  # Force asset serving through Rails for jsbundling-rails
+  # Serve assets directly from public directory 
   config.serve_static_files = true
-  
-  # Ensure Propshaft can find and serve built assets
-  config.assets.prefix = '/assets'
 
   # Assume all access to the app is happening through a SSL-terminating reverse proxy.
   config.assume_ssl = true

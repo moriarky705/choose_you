@@ -2,7 +2,7 @@ services:
   - type: web
     name: choose-you
     runtime: ruby
-    buildCommand: bundle install && npm ci && npm run build:production && bundle exec rails assets:precompile
+    buildCommand: bundle install && npm ci && npm run build:production
     startCommand: bundle exec rails server -b 0.0.0.0 -p $PORT
     env: ruby-3.2.9
     plan: free
