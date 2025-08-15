@@ -16,8 +16,8 @@
 
   <%# Tailwind CSS CDN for styling %>
   <script src="https://cdn.tailwindcss.com"></script>
-  <%# esbuild output application.js - use javascript_include_tag for jsbundling-rails %>
-  <%= javascript_include_tag "application", "data-turbo-track": "reload", defer: true %>
+  <%# Direct static asset serving for esbuild output %>
+  <script src="/assets/application.js" defer></script>
   </head>
 
   <body class="bg-gray-50 min-h-screen">
