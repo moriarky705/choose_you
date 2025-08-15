@@ -33,6 +33,9 @@ Rails.application.configure do
   
   # Force asset serving through Rails for jsbundling-rails
   config.serve_static_files = true
+  
+  # Ensure Propshaft can find and serve built assets
+  config.assets.prefix = '/assets'
 
   # Assume all access to the app is happening through a SSL-terminating reverse proxy.
   config.assume_ssl = true
