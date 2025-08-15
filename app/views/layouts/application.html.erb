@@ -14,10 +14,8 @@
     <link rel="icon" href="/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/icon.png">
 
-  <%# Tailwind CSS CDN for development %>
+  <%# Tailwind CSS CDN for styling %>
   <script src="https://cdn.tailwindcss.com"></script>
-  <%# application.css (Propshaft) %>
-  <%= stylesheet_link_tag "application", "data-turbo-track": "reload" %>
   <%# esbuild output application.js - use javascript_include_tag for jsbundling-rails %>
   <%= javascript_include_tag "application", "data-turbo-track": "reload", defer: true %>
   </head>
