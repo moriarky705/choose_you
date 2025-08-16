@@ -16,66 +16,40 @@ class RoomsController < ApplicationController
   def show
     return redirect_to root_path, alert: '部屋が存在しません' unless @room
 
-    @owner_view = owner_token_matches?
-    participant_token = cookies.signed[participant_cookie_key(@room.id)] || params[:participant_token]
-    if participant_token && cookies.signed[participant_cookie_key(@room.id)].blank?
-      cookies.permanent.signed[participant_cookie_key(@room.id)] = participant_token
-    end
-    @participant = find_participant(@room, participant_token)
-
-    if !@owner_view && @participant.nil?
+    authorized_user = authorization_service.authorized_user
+    
+    if authorized_user.nil?
       render :join_form and return
     end
 
-    @participants = RoomRegistry.participant_list(@room.id)
-    @last_selection = @room.last_selection
-    @last_count = params[:count]&.to_i || 1  # 抽選人数を保持
+    setup_participant_cookie(authorized_user) if authorized_user.participant?
+    setup_show_variables(authorized_user)
   end
 
   def join
-    # 既にこの部屋の参加者であれば何もしない
-    existing_token = cookies.signed[participant_cookie_key(params[:id])]
-    if existing_token
-      existing = RoomRegistry.participant_list(params[:id]).find { |p| p.token == existing_token }
-      return redirect_to room_path(params[:id]) if existing
-    end
-
+    return redirect_to_room_if_already_joined if already_joined?
+    
     name = params.require(:name)
     participant = RoomRegistry.add_participant(room_id: params[:id], name:)
-    cookies.permanent.signed[participant_cookie_key(params[:id])] = participant.token if participant
     
-    # ActionCableでブロードキャスト（エラー時はスキップ）
-    begin
-      ActionCable.server.broadcast("room_#{params[:id]}", { type: 'participants', participants: RoomRegistry.participant_list(params[:id]).map { |p| { name: p.name } } })
-      Rails.logger.info "📡 ActionCable: Broadcasted participants update for room #{params[:id]}"
-    rescue => e
-      Rails.logger.warn "⚠️  ActionCable broadcast failed: #{e.message}"
+    if participant
+      store_participant_cookie(participant.token)
+      ActionCableBroadcastService.broadcast_participants_update(params[:id])
     end
     
     redirect_to room_path(params[:id], participant_token: participant&.token)
   end
 
   def select
-    unless owner_token_matches?
-      head :forbidden and return
-    end
+    return head :forbidden unless authorization_service.owner_access?
+
+    validation_error = validate_selection_params
+    return validation_error if validation_error
+
     count = params[:count].to_i
-    participants = RoomRegistry.participant_list(params[:id])
-    if count <= 0
-      redirect_to room_path(params[:id], count: count), alert: '1以上の人数を指定してください' and return
-    end
-    if count > participants.size
-      redirect_to room_path(params[:id], count: count), alert: "参加者数(#{participants.size})以下の人数を指定してください" and return
-    end
     selected = RoomRegistry.select_random(room_id: params[:id], count:)
     
-    # ActionCableでブロードキャスト（エラー時はスキップ）
-    begin
-      ActionCable.server.broadcast("room_#{params[:id]}", { type: 'selection', selected: selected.map { |p| { name: p.name } }, count: count })
-      Rails.logger.info "📡 ActionCable: Broadcasted selection update for room #{params[:id]}"
-    rescue => e
-      Rails.logger.warn "⚠️  ActionCable broadcast failed: #{e.message}"
-    end
+    ActionCableBroadcastService.broadcast_selection_update(params[:id], selected, count)
     
     redirect_to room_path(params[:id], count: count)
   end
@@ -83,16 +57,7 @@ class RoomsController < ApplicationController
   def updates
     return head :not_found unless @room
     
-    participants = RoomRegistry.participant_list(params[:id])
-    data = {
-      participants: participants.map { |p| { name: p.name } }
-    }
-    
-    if @room.last_selection
-      data[:selection] = @room.last_selection
-    end
-    
-    render json: data
+    render json: room_updates_data
   end
 
   private
@@ -101,14 +66,70 @@ class RoomsController < ApplicationController
     @room = RoomRegistry.find_room(params[:id])
   end
 
-  def owner_token_matches?
-    token = params[:owner_token] || cookies.signed[:owner_token]
-    @room && token == @room.owner_token
+  def authorization_service
+    @authorization_service ||= RoomAuthorizationService.new(@room, params, cookies)
   end
 
-  def find_participant(room, token)
-    return nil unless room && token
-    room.participants.find { |p| p.token == token }
+  def setup_participant_cookie(authorized_user)
+    cookie_key = participant_cookie_key(@room.id)
+    return if cookies.signed[cookie_key].present?
+    
+    cookies.permanent.signed[cookie_key] = authorized_user.token
+  end
+
+  def setup_show_variables(authorized_user)
+    @owner_view = authorized_user.owner?
+    @participant = authorized_user.participant? ? authorized_user : nil
+    @participants = RoomRegistry.participant_list(@room.id)
+    @last_selection = @room.last_selection
+    @last_count = params[:count]&.to_i || 1
+  end
+
+  def redirect_to_room_if_already_joined
+    existing_token = cookies.signed[participant_cookie_key(params[:id])]
+    return false unless existing_token
+    
+    existing_participant = RoomRegistry.participant_list(params[:id]).find { |p| p.token == existing_token }
+    if existing_participant
+      redirect_to room_path(params[:id])
+      return true
+    end
+    false
+  end
+
+  def already_joined?
+    existing_token = cookies.signed[participant_cookie_key(params[:id])]
+    return false unless existing_token
+    
+    RoomRegistry.participant_list(params[:id]).any? { |p| p.token == existing_token }
+  end
+
+  def store_participant_cookie(token)
+    cookies.permanent.signed[participant_cookie_key(params[:id])] = token
+  end
+
+  def validate_selection_params
+    count = params[:count].to_i
+    participants = RoomRegistry.participant_list(params[:id])
+    
+    if count <= 0
+      redirect_to room_path(params[:id], count: count), alert: '1以上の人数を指定してください'
+      return true
+    end
+    
+    if count > participants.size
+      redirect_to room_path(params[:id], count: count), alert: "参加者数(#{participants.size})以下の人数を指定してください"
+      return true
+    end
+    
+    false
+  end
+
+  def room_updates_data
+    participants = RoomRegistry.participant_list(params[:id])
+    data = { participants: participants.map { |p| { name: p.name } } }
+    data[:selection] = @room.last_selection if @room.last_selection
+    data
   end
 
   def participant_cookie_key(room_id)

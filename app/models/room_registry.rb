@@ -13,24 +13,11 @@ class RoomRegistry
       @instance ||= new
     end
 
-    def create_room(owner_name:)
-      instance.create_room(owner_name:)
-    end
-
-    def find_room(id)
-      instance.find_room(id)
-    end
-
-    def add_participant(room_id:, name:)
-      instance.add_participant(room_id:, name:)
-    end
-
-    def participant_list(room_id)
-      instance.participant_list(room_id)
-    end
-
-    def select_random(room_id:, count:)
-      instance.select_random(room_id:, count:)
+    # 委譲メソッド群を動的に定義
+    %i[create_room find_room add_participant participant_list select_random].each do |method_name|
+      define_method(method_name) do |*args, **kwargs|
+        instance.public_send(method_name, *args, **kwargs)
+      end
     end
   end
 
@@ -40,10 +27,19 @@ class RoomRegistry
   end
 
   def create_room(owner_name:)
-    room_id = generate_room_id
-    owner_token = SecureRandom.hex(16)
-    room = Room.new(id: room_id, owner_token:, owner_name:, participants: [], created_at: Time.now, last_selection: nil)
-    @mutex.synchronize { @rooms[room_id] = room }
+    room_id = generate_unique_room_id
+    owner_token = generate_token(16)
+    
+    room = Room.new(
+      id: room_id,
+      owner_token: owner_token,
+      owner_name: owner_name,
+      participants: [],
+      created_at: Time.now,
+      last_selection: nil
+    )
+    
+    store_room(room_id, room)
     [room, owner_token]
   end
 
@@ -54,33 +50,75 @@ class RoomRegistry
   def add_participant(room_id:, name:)
     room = find_room(room_id)
     return unless room
-    token = SecureRandom.hex(12)
-    participant = Participant.new(token:, name:, joined_at: Time.now)
-    @mutex.synchronize { room.participants << participant }
+    
+    participant = create_participant(name)
+    add_participant_to_room(room, participant)
     participant
   end
 
   def participant_list(room_id)
     room = find_room(room_id)
     return [] unless room
-    [*room.participants, Participant.new(token: room.owner_token, name: room.owner_name, joined_at: room.created_at)]
+    
+    build_complete_participant_list(room)
   end
 
   def select_random(room_id:, count:)
     room = find_room(room_id)
     return [] unless room
-    all = participant_list(room_id)
-    selected = all.sample([count, all.size].min)
-    room.last_selection = { at: Time.now, count:, selected: selected.map { |p| { name: p.name } } }
+    
+    all_participants = participant_list(room_id)
+    selected_count = [count, all_participants.size].min
+    selected = all_participants.sample(selected_count)
+    
+    update_last_selection(room, selected, count)
     selected
   end
 
   private
 
-  def generate_room_id
+  def generate_unique_room_id
     loop do
       id = SecureRandom.alphanumeric(6).downcase
       return id unless @rooms.key?(id)
     end
+  end
+
+  def generate_token(length)
+    SecureRandom.hex(length)
+  end
+
+  def store_room(room_id, room)
+    @mutex.synchronize { @rooms[room_id] = room }
+  end
+
+  def create_participant(name)
+    Participant.new(
+      token: generate_token(12),
+      name: name,
+      joined_at: Time.now
+    )
+  end
+
+  def add_participant_to_room(room, participant)
+    @mutex.synchronize { room.participants << participant }
+  end
+
+  def build_complete_participant_list(room)
+    owner_as_participant = Participant.new(
+      token: room.owner_token,
+      name: room.owner_name,
+      joined_at: room.created_at
+    )
+    
+    [*room.participants, owner_as_participant]
+  end
+
+  def update_last_selection(room, selected, count)
+    room.last_selection = {
+      at: Time.now,
+      count: count,
+      selected: selected.map { |p| { name: p.name } }
+    }
   end
 end

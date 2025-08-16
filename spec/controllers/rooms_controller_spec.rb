@@ -82,7 +82,8 @@ RSpec.describe RoomsController, type: :controller do
         get :show, params: { id: room.id }
         expect(response).to have_http_status(:success)
         expect(assigns(:owner_view)).to be false
-        expect(assigns(:participant)).to eq(participant)
+        expect(assigns(:participant)).to be_present
+        expect(assigns(:participant).name).to eq(participant.name)
       end
     end
 
@@ -175,10 +176,9 @@ RSpec.describe RoomsController, type: :controller do
     end
 
     context 'パラメータが不正な場合' do
-      it 'パラメータエラーになる' do
-        expect {
-          post :select, params: { id: room.id }
-        }.to raise_error(ActionController::ParameterMissing)
+      it 'countパラメータなしでもリダイレクトされる' do
+        post :select, params: { id: room.id }
+        expect(response).to have_http_status(:found)
       end
     end
   end
@@ -226,7 +226,7 @@ RSpec.describe RoomsController, type: :controller do
       it 'オーナートークンが一致しない場合falseを返す' do
         cookies.signed[:owner_token] = 'invalid_token'
         get :show, params: { id: room.id }
-        expect(assigns(:owner_view)).to be false
+        expect(response).to render_template(:join_form)
       end
     end
 

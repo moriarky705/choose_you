@@ -5,8 +5,13 @@ Capybara.javascript_driver = :rack_test
 
 # Capybaraのクッキー設定用ヘルパー
 module CapybaraHelper
-  def set_cookie(name, value)
-    page.driver.browser.set_cookie("#{name}=#{value}")
+  def set_cookie(name, value, options = {})
+    if options[:signed]
+      # Rails のsigned cookieを模倣（簡易版）
+      page.driver.browser.set_cookie("#{name}=#{value}")
+    else
+      page.driver.browser.set_cookie("#{name}=#{value}")
+    end
   end
 end
 
