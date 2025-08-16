@@ -32,7 +32,7 @@ RSpec.configure do |config|
   # have no way to turn it off -- the option exists only for backwards
   # compatibility in RSpec 3). It causes shared examples to be excluded from
   # the list of example group names.
-  config.shared_context_registry.include_context_in_shared_groups = false
+  # config.shared_context_registry.include_context_in_shared_groups = false
 
   # This is the default, but we want to be explicit about it.
   config.order = :random
