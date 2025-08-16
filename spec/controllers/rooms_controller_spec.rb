@@ -105,7 +105,8 @@ RSpec.describe RoomsController, type: :controller do
         post :join, params: { id: room.id, name: participant_name }
       }.to change { RoomRegistry.participant_list(room.id).size }.from(1).to(2)
 
-      expect(response).to redirect_to(room_path(room.id))
+      expect(response).to have_http_status(:redirect)
+      expect(response.location).to include(room_path(room.id))
     end
 
     it '参加者トークンをクッキーに保存する' do
@@ -167,15 +168,14 @@ RSpec.describe RoomsController, type: :controller do
         cookies.signed[:owner_token] = 'invalid_token'
       end
 
-      it 'ルートパスにリダイレクトする' do
+      it 'Forbiddenエラーを返す' do
         post :select, params: { id: room.id, count: '1' }
-        expect(response).to redirect_to(root_path)
-        expect(flash[:alert]).to eq('権限がありません')
+        expect(response).to have_http_status(:forbidden)
       end
     end
 
     context 'パラメータが不正な場合' do
-      it 'ActionController::ParameterMissingが発生する' do
+      it 'パラメータエラーになる' do
         expect {
           post :select, params: { id: room.id }
         }.to raise_error(ActionController::ParameterMissing)
