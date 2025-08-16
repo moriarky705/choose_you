@@ -100,6 +100,7 @@ export default class extends Controller {
   renderParticipants(list) {
     if (!this.hasParticipantsTarget) return
     
+    console.log('🎨 Rendering participants:', list.length, 'participants')
     const renderer = new ParticipantRenderer()
     this.participantsTarget.innerHTML = renderer.render(list)
   }
@@ -189,12 +190,21 @@ class MessageHandler {
   }
 
   handleParticipantsUpdate(data) {
+    console.log('👥 Updating participants list:', data.participants.length, 'participants')
     this.controller.renderParticipants(data.participants)
   }
 
   handleSelectionUpdate(data) {
     if (data.selected) {
       this.controller.renderSelection(data.selected, data.count)
+      
+      // 抽選後に参加者リストが消える問題の対策
+      // 現在の参加者リストが空でなければ維持する
+      if (this.controller.hasParticipantsTarget && 
+          this.controller.participantsTarget.children.length === 0) {
+        console.log('🔄 Participants list disappeared after selection, fetching updates...')
+        this.controller.fetchUpdates()
+      }
     }
   }
 }

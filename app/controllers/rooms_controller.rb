@@ -49,7 +49,10 @@ class RoomsController < ApplicationController
     count = params[:count].to_i
     selected = RoomRegistry.select_random(room_id: params[:id], count:)
     
+    # 抽選結果を配信
     ActionCableBroadcastService.broadcast_selection_update(params[:id], selected, count)
+    # 参加者リストも同時に再配信（UIの整合性を保つため）
+    ActionCableBroadcastService.broadcast_participants_update(params[:id])
     
     redirect_to room_path(params[:id], count: count)
   end
