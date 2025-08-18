@@ -3,23 +3,35 @@
 require 'securerandom'
 require 'thread'
 
-# インメモリで部屋と参加者を管理するレジストリ（プロセス内のみで永続化なし）
+# 部屋と参加者を管理するレジストリ（Redis or InMemory）
 class RoomRegistry
   Room = Struct.new(:id, :owner_token, :owner_name, :participants, :created_at, :last_selection, keyword_init: true)
   Participant = Struct.new(:token, :name, :joined_at, keyword_init: true)
 
   class << self
-    def instance
-      @instance ||= new
+    def service
+      @service ||= if Rails.env.production? && ENV['REDIS_URL'].present?
+                     Rails.logger.info "🔴 Using Redis for room persistence"
+                     RedisRoomService.new
+                   else
+                     Rails.logger.info "🟡 Using InMemory for room persistence"
+                     InMemoryRoomService.new
+                   end
     end
 
     # 委譲メソッド群を動的に定義
     %i[create_room find_room add_participant participant_list select_random room_exists? cleanup_expired_rooms].each do |method_name|
       define_method(method_name) do |*args, **kwargs|
-        instance.public_send(method_name, *args, **kwargs)
+        service.public_send(method_name, *args, **kwargs)
       end
     end
   end
+end
+
+# インメモリ実装（開発・テスト用）
+class InMemoryRoomService
+  Room = Struct.new(:id, :owner_token, :owner_name, :participants, :created_at, :last_selection, keyword_init: true)
+  Participant = Struct.new(:token, :name, :joined_at, keyword_init: true)
 
   def initialize
     @rooms = {}
@@ -40,23 +52,24 @@ class RoomRegistry
     )
     
     store_room(room_id, room)
+    Rails.logger.info "🏠 InMemory: Created room: id=#{room_id}, owner=#{owner_name}"
     [room, owner_token]
   end
 
   def find_room(id)
     room = @rooms[id]
-    Rails.logger.debug "🔍 RoomRegistry.find_room: id=#{id}, found=#{room.present?}, total_rooms=#{@rooms.keys.size}"
+    Rails.logger.debug "🔍 InMemory: Find room: id=#{id}, found=#{room.present?}, total_rooms=#{@rooms.keys.size}"
     room
   end
 
   def add_participant(room_id:, name:)
     room = find_room(room_id)
-    Rails.logger.info "👥 Adding participant: room_id=#{room_id}, name=#{name}, room_found=#{room.present?}"
+    Rails.logger.info "👥 InMemory: Adding participant: room_id=#{room_id}, name=#{name}, room_found=#{room.present?}"
     return unless room
     
     participant = create_participant(name)
     add_participant_to_room(room, participant)
-    Rails.logger.info "✅ Participant added successfully: #{participant.name}"
+    Rails.logger.info "✅ InMemory: Participant added successfully: #{participant.name}"
     participant
   end
 
@@ -79,12 +92,12 @@ class RoomRegistry
     selected
   end
 
-  # 部屋の存在確認
   def room_exists?(room_id)
-    @rooms.key?(room_id)
+    exists = @rooms.key?(room_id)
+    Rails.logger.debug "🏠 InMemory: Room exists check: id=#{room_id}, exists=#{exists}"
+    exists
   end
 
-  # 期限切れ部屋のクリーンアップ（24時間後）
   def cleanup_expired_rooms
     @mutex.synchronize do
       expired_rooms = @rooms.select do |_, room|
@@ -93,7 +106,7 @@ class RoomRegistry
       
       expired_rooms.each do |room_id, _|
         @rooms.delete(room_id)
-        Rails.logger.info "Cleaned up expired room: #{room_id}"
+        Rails.logger.info "🧹 InMemory: Cleaned up expired room: #{room_id}"
       end
       
       expired_rooms.size
