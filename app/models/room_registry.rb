@@ -44,15 +44,19 @@ class RoomRegistry
   end
 
   def find_room(id)
-    @rooms[id]
+    room = @rooms[id]
+    Rails.logger.debug "🔍 RoomRegistry.find_room: id=#{id}, found=#{room.present?}, total_rooms=#{@rooms.keys.size}"
+    room
   end
 
   def add_participant(room_id:, name:)
     room = find_room(room_id)
+    Rails.logger.info "👥 Adding participant: room_id=#{room_id}, name=#{name}, room_found=#{room.present?}"
     return unless room
     
     participant = create_participant(name)
     add_participant_to_room(room, participant)
+    Rails.logger.info "✅ Participant added successfully: #{participant.name}"
     participant
   end
 

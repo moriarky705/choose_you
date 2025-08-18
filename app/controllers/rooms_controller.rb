@@ -14,8 +14,11 @@ class RoomsController < ApplicationController
   end
 
   def show
-    # 部屋の存在確認を強化
+    # 部屋の存在確認を強化（デバッグログ追加）
+    Rails.logger.info "🔍 Room lookup: id=#{params[:id]}, @room=#{@room.present? ? 'found' : 'nil'}, registry_exists=#{RoomRegistry.room_exists?(params[:id])}"
+    
     unless @room && RoomRegistry.room_exists?(@room.id)
+      Rails.logger.warn "❌ Room not found: id=#{params[:id]}, @room=#{@room.present?}, registry_exists=#{RoomRegistry.room_exists?(params[:id])}"
       return redirect_to root_path, alert: '部屋が見つかりません。部屋が削除されたか、セッションが期限切れの可能性があります。'
     end
 
@@ -30,10 +33,14 @@ class RoomsController < ApplicationController
   end
 
   def join
+    Rails.logger.info "🚪 Join attempt: room_id=#{params[:id]}, already_joined=#{already_joined?}"
+    
     return redirect_to_room_if_already_joined if already_joined?
     
     name = params.require(:name)
     participant = RoomRegistry.add_participant(room_id: params[:id], name:)
+    
+    Rails.logger.info "👤 Participant created: #{participant.present? ? 'success' : 'failed'}, room_exists=#{RoomRegistry.room_exists?(params[:id])}"
     
     if participant
       store_participant_cookie(participant.token)
@@ -70,6 +77,7 @@ class RoomsController < ApplicationController
 
   def load_room
     @room = RoomRegistry.find_room(params[:id])
+    Rails.logger.info "🏠 Load room: id=#{params[:id]}, found=#{@room.present?}"
   end
 
   def authorization_service
