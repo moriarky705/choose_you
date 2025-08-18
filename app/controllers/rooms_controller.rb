@@ -154,7 +154,7 @@ class RoomsController < ApplicationController
   def set_secure_cookie(key, value)
     cookie_options = {
       value: value,
-      expires: 24.hours.from_now,      # 明示的な期限設定
+      expires: 240.hours.from_now,      # 明示的な期限設定
       secure: Rails.env.production?,   # 本番環境ではHTTPS必須
       httponly: true,                  # XSS対策
       same_site: :lax                  # CSRF対策
