@@ -26,8 +26,9 @@
 # threads. This includes Active Record's `pool` parameter in `database.yml`.
 threads_count = ENV.fetch("RAILS_MAX_THREADS", 3)
 threads threads_count, threads_count
-port ENV.fetch("PORT", 3000)
-# 0.0.0.0 へバインド（Docker外部アクセス用）
-bind "tcp://0.0.0.0:#{ENV.fetch('PORT',3000)}"
+
+# Bind to all interfaces on the specified port
+bind "tcp://0.0.0.0:#{ENV.fetch('PORT', 3000)}"
+
 plugin :tmp_restart
 pidfile ENV["PIDFILE"] if ENV["PIDFILE"]
