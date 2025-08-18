@@ -14,7 +14,7 @@ class RoomRegistry
     end
 
     # 委譲メソッド群を動的に定義
-    %i[create_room find_room add_participant participant_list select_random].each do |method_name|
+    %i[create_room find_room add_participant participant_list select_random room_exists? cleanup_expired_rooms].each do |method_name|
       define_method(method_name) do |*args, **kwargs|
         instance.public_send(method_name, *args, **kwargs)
       end
@@ -120,5 +120,26 @@ class RoomRegistry
       count: count,
       selected: selected.map { |p| { name: p.name } }
     }
+  end
+
+  # 部屋の存在確認
+  def room_exists?(room_id)
+    @rooms.key?(room_id)
+  end
+
+  # 期限切れ部屋のクリーンアップ（24時間後）
+  def cleanup_expired_rooms
+    @mutex.synchronize do
+      expired_rooms = @rooms.select do |_, room|
+        room.created_at < 24.hours.ago
+      end
+      
+      expired_rooms.each do |room_id, _|
+        @rooms.delete(room_id)
+        Rails.logger.info "Cleaned up expired room: #{room_id}"
+      end
+      
+      expired_rooms.size
+    end
   end
 end

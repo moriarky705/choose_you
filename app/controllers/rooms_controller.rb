@@ -9,12 +9,15 @@ class RoomsController < ApplicationController
   def create
     owner_name = params.require(:owner_name)
     room, owner_token = RoomRegistry.create_room(owner_name:)
-    cookies.permanent.signed[:owner_token] = owner_token
+    set_secure_cookie(:owner_token, owner_token)
     redirect_to room_path(room.id, owner_token:)
   end
 
   def show
-    return redirect_to root_path, alert: '部屋が存在しません' unless @room
+    # 部屋の存在確認を強化
+    unless @room && RoomRegistry.room_exists?(@room.id)
+      return redirect_to root_path, alert: '部屋が見つかりません。部屋が削除されたか、セッションが期限切れの可能性があります。'
+    end
 
     authorized_user = authorization_service.authorized_user
     
@@ -77,7 +80,7 @@ class RoomsController < ApplicationController
     cookie_key = participant_cookie_key(@room.id)
     return if cookies.signed[cookie_key].present?
     
-    cookies.permanent.signed[cookie_key] = authorized_user.token
+    set_secure_cookie(cookie_key, authorized_user.token)
   end
 
   def setup_show_variables(authorized_user)
@@ -108,7 +111,7 @@ class RoomsController < ApplicationController
   end
 
   def store_participant_cookie(token)
-    cookies.permanent.signed[participant_cookie_key(params[:id])] = token
+    set_secure_cookie(participant_cookie_key(params[:id]), token)
   end
 
   def validate_selection_params
