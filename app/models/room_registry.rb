@@ -75,6 +75,27 @@ class RoomRegistry
     selected
   end
 
+  # 部屋の存在確認
+  def room_exists?(room_id)
+    @rooms.key?(room_id)
+  end
+
+  # 期限切れ部屋のクリーンアップ（24時間後）
+  def cleanup_expired_rooms
+    @mutex.synchronize do
+      expired_rooms = @rooms.select do |_, room|
+        room.created_at < 24.hours.ago
+      end
+      
+      expired_rooms.each do |room_id, _|
+        @rooms.delete(room_id)
+        Rails.logger.info "Cleaned up expired room: #{room_id}"
+      end
+      
+      expired_rooms.size
+    end
+  end
+
   private
 
   def generate_unique_room_id
@@ -120,26 +141,5 @@ class RoomRegistry
       count: count,
       selected: selected.map { |p| { name: p.name } }
     }
-  end
-
-  # 部屋の存在確認
-  def room_exists?(room_id)
-    @rooms.key?(room_id)
-  end
-
-  # 期限切れ部屋のクリーンアップ（24時間後）
-  def cleanup_expired_rooms
-    @mutex.synchronize do
-      expired_rooms = @rooms.select do |_, room|
-        room.created_at < 24.hours.ago
-      end
-      
-      expired_rooms.each do |room_id, _|
-        @rooms.delete(room_id)
-        Rails.logger.info "Cleaned up expired room: #{room_id}"
-      end
-      
-      expired_rooms.size
-    end
   end
 end
