@@ -104,10 +104,11 @@ class RedisRoomService
     selected_count = [count, all_participants.size].min
     selected = all_participants.sample(selected_count)
     
+    # InMemoryRoomServiceと同じデータ構造に統一
     room.last_selection = {
-      participants: selected.map { |p| { name: p.name } },
+      at: Time.now,
       count: count,
-      selected_at: Time.now.iso8601
+      selected: selected.map { |p| { name: p.name } }
     }
     
     store_room_object(room)

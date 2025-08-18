@@ -19,7 +19,7 @@ class RoomChannel < ApplicationCable::Channel
     
     # 最後の抽選結果があれば送信
     room = RoomRegistry.find_room(room_id)
-    if room&.last_selection
+    if room&.last_selection && room.last_selection[:selected]
       last = room.last_selection
       transmit({ type: 'selection', selected: last[:selected], count: last[:count] })
       Rails.logger.info "🎯 ActionCable: Sent last selection to room #{room_id}"

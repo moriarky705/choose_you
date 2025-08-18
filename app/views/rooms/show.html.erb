@@ -124,7 +124,7 @@
       </div>
       <div class="p-6">
         <div data-room-target="selectionList" class="space-y-3 min-h-[200px]">
-          <% if @last_selection %>
+          <% if @last_selection && @last_selection[:selected]&.any? %>
             <% @last_selection[:selected].each_with_index do |s, index| %>
               <div class="flex items-center p-4 bg-amber-50 border border-amber-200 rounded-lg">
                 <div class="w-10 h-10 bg-amber-600 rounded-full flex items-center justify-center text-white font-bold mr-3">
