@@ -10,13 +10,19 @@ class RoomRegistry
 
   class << self
     def service
-      @service ||= if Rails.env.production? && ENV['REDIS_URL'].present?
-                     Rails.logger.info "🔴 Using Redis for room persistence"
-                     RedisRoomService.new
-                   else
-                     Rails.logger.info "🟡 Using InMemory for room persistence"
-                     InMemoryRoomService.new
-                   end
+      @service ||= begin
+        if Rails.env.production? && ENV['REDIS_URL'].present?
+          Rails.logger.info "🔴 Using Redis for room persistence"
+          RedisRoomService.new
+        else
+          Rails.logger.info "🟡 Using InMemory for room persistence"
+          InMemoryRoomService.new
+        end
+      rescue => e
+        Rails.logger.error "❌ Redis initialization failed: #{e.message}"
+        Rails.logger.info "🟡 Falling back to InMemory for room persistence"
+        InMemoryRoomService.new
+      end
     end
 
     # 委譲メソッド群を動的に定義

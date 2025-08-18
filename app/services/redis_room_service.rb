@@ -13,7 +13,15 @@ class RedisRoomService
   ROOM_EXPIRY = 24.hours.to_i
   
   def initialize
-    @redis = Redis.new(url: ENV['REDIS_URL'] || 'redis://localhost:6379')
+    redis_url = ENV['REDIS_URL'] || 'redis://localhost:6379'
+    @redis = Redis.new(url: redis_url, timeout: 5, reconnect_attempts: 3)
+    
+    # Redis接続をテスト
+    @redis.ping
+    Rails.logger.info "✅ Redis connection established: #{redis_url}"
+  rescue => e
+    Rails.logger.error "❌ Redis connection failed: #{e.message}"
+    raise
   end
   
   def create_room(owner_name:)
@@ -107,7 +115,8 @@ class RedisRoomService
   end
   
   def room_exists?(room_id)
-    exists = @redis.exists?(room_key(room_id)) > 0
+    result = @redis.exists?(room_key(room_id))
+    exists = result.is_a?(Integer) ? result > 0 : !!result
     Rails.logger.debug "🏠 Redis: Room exists check: id=#{room_id}, exists=#{exists}"
     exists
   rescue Redis::BaseError => e
