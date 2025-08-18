@@ -79,13 +79,4 @@ Rails.application.configure do
     "https://choose-you.onrender.com",
     /https:\/\/.*\.onrender\.com/
   ]
-  
-  # セッション・Cookie設定の最適化
-  config.session_options = {
-    key: '_choose_you_session',
-    secure: true,
-    httponly: true,
-    same_site: :lax,
-    expire_after: 24.hours
-  }
 end
