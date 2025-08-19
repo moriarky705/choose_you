@@ -10,7 +10,7 @@ class RedisRoomService
   Participant = Struct.new(:token, :name, :joined_at, keyword_init: true)
   
   ROOM_KEY_PREFIX = 'room:'
-  ROOM_EXPIRY = 24.hours.to_i
+  ROOM_EXPIRY = 10.days.to_i
   
   def initialize
     redis_url = ENV['REDIS_URL'] || 'redis://localhost:6379'

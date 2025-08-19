@@ -107,7 +107,7 @@ class InMemoryRoomService
   def cleanup_expired_rooms
     @mutex.synchronize do
       expired_rooms = @rooms.select do |_, room|
-        room.created_at < 24.hours.ago
+        room.created_at < 10.days.ago
       end
       
       expired_rooms.each do |room_id, _|

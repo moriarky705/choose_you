@@ -6,7 +6,7 @@ Rails.application.config.after_initialize do
     begin
       # RoomRegistryクラスが利用可能になってからクリーンアップ実行
       Rails.application.executor.wrap do
-        # 期限切れ部屋のクリーンアップ
+        # 期限切れ部屋のクリーンアップ（10日間の保持期間）
         Rails.logger.info "Starting room cleanup on application boot..."
         cleaned_count = RoomRegistry.cleanup_expired_rooms
         Rails.logger.info "Cleaned up #{cleaned_count} expired rooms on boot"
