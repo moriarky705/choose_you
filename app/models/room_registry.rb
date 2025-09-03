@@ -91,6 +91,7 @@ class InMemoryRoomService
     return [] unless room
     
     all_participants = participant_list(room_id)
+    all_participants = all_participants.shuffle
     selected_count = [count, all_participants.size].min
     selected = all_participants.sample(selected_count)
     
