@@ -9,6 +9,7 @@ RUN apt-get update -qq && \
     curl \
     git \
     libjemalloc2 \
+    libyaml-dev \
     node-gyp \
     pkg-config && \
     rm -rf /var/lib/apt/lists/*
@@ -23,9 +24,8 @@ WORKDIR /rails
 
 # Install Ruby dependencies
 COPY Gemfile Gemfile.lock ./
-RUN bundle config set --local deployment true && \
-    bundle config set --local without "development test" && \
-    bundle install --jobs 4 --retry 3 && \
+RUN bundle config set --local without "development test" && \
+    bundle install --frozen --jobs 4 --retry 3 && \
     rm -rf ~/.bundle/cache vendor/bundle/ruby/*/cache
 
 # Install JavaScript dependencies and build assets
