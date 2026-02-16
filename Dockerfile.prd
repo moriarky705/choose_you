@@ -34,11 +34,10 @@ RUN npm install
 
 COPY . .
 
-# Precompile assets
+# Build assets
 ENV RAILS_ENV=production
 ENV SECRET_KEY_BASE=placeholder_for_build
-RUN npm run build:production && \
-    bundle exec rails assets:precompile
+RUN npm run build:production
 
 # Remove files not needed in production
 RUN rm -rf node_modules tmp/cache spec .github
