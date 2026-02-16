@@ -24,11 +24,8 @@ Rails.application.configure do
   # Enable serving of images, stylesheets, and JavaScripts from an asset server.
   # config.asset_host = "http://assets.example.com"
 
-  # Enable static file serving for Render.com
-  config.public_file_server.enabled = true
-  
-  # Serve assets directly from public directory 
-  config.serve_static_files = true
+  # Enable static file serving for Render.com (controlled by RAILS_SERVE_STATIC_FILES env var)
+  config.public_file_server.enabled = ENV['RAILS_SERVE_STATIC_FILES'].present?
 
   # Assume all access to the app is happening through a SSL-terminating reverse proxy.
   config.assume_ssl = true
@@ -63,16 +60,6 @@ Rails.application.configure do
   # the I18n.default_locale when a translation cannot be found).
   config.i18n.fallbacks = true
 
-  # Host Authorization configuration for Render.com
-  config.hosts.clear
-  config.hosts << "choose-you.onrender.com"
-  config.hosts << /.*\.onrender\.com/
-  config.host_authorization = { exclude: ->(request) { true } }
-  
-  # CSRF protection configuration for Render.com
-  config.action_controller.forgery_protection_origin_check = false
-  config.action_controller.allow_forgery_protection = true
-  
   # ActionCable configuration for Render.com
   config.action_cable.url = "wss://choose-you.onrender.com/cable"
   config.action_cable.allowed_request_origins = [
