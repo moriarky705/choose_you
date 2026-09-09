@@ -9118,6 +9118,7 @@
       this.selectionListTarget.innerHTML = renderer.render(selected);
       this.updateSelectionHeader(selected.length);
       this.animateSelectionResults();
+      this.celebrateSelection(selected);
     }
     updateSelectionHeader(count) {
       if (this.hasSelectionHeaderTarget && this.selectionHeaderTarget.hidden) {
@@ -9138,6 +9139,42 @@
           { duration: 450, delay: index * 80, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "both" }
         );
       });
+    }
+    celebrateSelection(selected) {
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      const signature = selected.map((participant) => participant.name).join("|");
+      if (signature === this.lastSelectionSignature) return;
+      this.lastSelectionSignature = signature;
+      const burst = document.createElement("div");
+      burst.setAttribute("aria-hidden", "true");
+      burst.style.cssText = "position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:50";
+      document.body.appendChild(burst);
+      const colors = ["#F59E0B", "#10B981", "#6366F1", "#EC4899", "#06B6D4"];
+      for (let index = 0; index < 36; index += 1) {
+        const particle = document.createElement("span");
+        const horizontal = (Math.random() - 0.5) * 520;
+        const vertical = 220 + Math.random() * 360;
+        const rotation = (Math.random() - 0.5) * 720;
+        const size = 6 + Math.random() * 5;
+        particle.style.cssText = [
+          "position:absolute",
+          "left:50%",
+          "top:22%",
+          `width:${size}px`,
+          `height:${size * 1.6}px`,
+          `background:${colors[index % colors.length]}`,
+          "border-radius:2px"
+        ].join(";");
+        burst.appendChild(particle);
+        particle.animate(
+          [
+            { transform: "translate(-50%, -50%) rotate(0deg)", opacity: 1 },
+            { transform: `translate(calc(-50% + ${horizontal}px), ${vertical}px) rotate(${rotation}deg)`, opacity: 0 }
+          ],
+          { duration: 1200 + Math.random() * 500, delay: Math.random() * 180, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "both" }
+        );
+      }
+      window.setTimeout(() => burst.remove(), 1900);
     }
     startSelection() {
       if (this.hasSelectionStatusTarget) {
