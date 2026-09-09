@@ -9034,6 +9034,7 @@
       this.connectionConfig = new ConnectionConfig();
       this.setupRealtimeConnection();
       this.animateSelectionResults();
+      this.celebrateInitialSelection();
     }
     disconnect() {
       this.cleanup();
@@ -9139,6 +9140,13 @@
           { duration: 450, delay: index * 80, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "both" }
         );
       });
+    }
+    celebrateInitialSelection() {
+      if (!this.hasSelectionListTarget) return;
+      const selected = Array.from(
+        this.selectionListTarget.querySelectorAll("[data-selection-name]")
+      ).map((card) => ({ name: card.dataset.selectionName }));
+      if (selected.length > 0) this.celebrateSelection(selected);
     }
     celebrateSelection(selected) {
       if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
