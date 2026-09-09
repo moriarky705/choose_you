@@ -4,13 +4,14 @@ import consumer from "../channels/consumer"
 // Real-time updates for room management
 export default class extends Controller {
   static values = { roomId: String, owner: Boolean }
-  static targets = ["participants", "selectionList", "countInput", "selectionHeader", "inviteUrl", "copyFeedback", "copyButton", "selectionStatus", "selectionSubmit"]
+  static targets = ["participants", "selectionList", "countInput", "selectionHeader", "selectionCount", "inviteUrl", "copyFeedback", "copyButton", "selectionStatus", "selectionSubmit"]
 
   // Connection and initialization
   connect() {
     console.log('Room controller connecting...', this.roomIdValue)
     this.connectionConfig = new ConnectionConfig()
     this.setupRealtimeConnection()
+    this.animateSelectionResults()
   }
 
   disconnect() {
@@ -111,13 +112,31 @@ export default class extends Controller {
     
     const renderer = new SelectionRenderer()
     this.selectionListTarget.innerHTML = renderer.render(selected)
-    this.updateSelectionHeader()
+    this.updateSelectionHeader(selected.length)
+    this.animateSelectionResults()
   }
 
-  updateSelectionHeader() {
+  updateSelectionHeader(count) {
     if (this.hasSelectionHeaderTarget && this.selectionHeaderTarget.hidden) {
       this.selectionHeaderTarget.hidden = false
     }
+    if (this.hasSelectionCountTarget) {
+      this.selectionCountTarget.textContent = `当選者 ${count}名`
+    }
+  }
+
+  animateSelectionResults() {
+    if (!this.hasSelectionListTarget || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    this.selectionListTarget.querySelectorAll('[data-selection-result]').forEach((card, index) => {
+      card.animate(
+        [
+          { opacity: 0, transform: 'translateY(12px) scale(0.98)' },
+          { opacity: 1, transform: 'translateY(0) scale(1)' }
+        ],
+        { duration: 450, delay: index * 80, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'both' }
+      )
+    })
   }
 
   startSelection() {
@@ -262,7 +281,7 @@ class ParticipantRenderer {
 class SelectionRenderer {
   render(selected) {
     return selected.map((p, index) => 
-      `<div class="flex items-center p-4 bg-amber-50 border border-amber-200 rounded-lg">
+      `<div class="flex items-center p-4 bg-amber-50 border border-amber-200 rounded-lg" data-selection-result>
         <div class="w-10 h-10 bg-amber-600 rounded-full flex items-center justify-center text-white font-bold mr-3">
           ${this.renderStarIcon()}
         </div>
