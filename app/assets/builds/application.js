@@ -11923,10 +11923,33 @@
     }
   };
 
+  // app/javascript/controllers/flash_controller.js
+  var flash_controller_default = class extends Controller {
+    static values = { autoDismiss: Boolean };
+    connect() {
+      if (this.autoDismissValue) {
+        this.timer = setTimeout(() => this.dismiss(), 5e3);
+      }
+    }
+    dismiss() {
+      clearTimeout(this.timer);
+      if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        this.element.remove();
+        return;
+      }
+      const animation = this.element.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200 });
+      animation.onfinish = () => this.element.remove();
+    }
+    disconnect() {
+      clearTimeout(this.timer);
+    }
+  };
+
   // app/javascript/controllers/index.js
   window.Stimulus = Application.start();
   Stimulus.register("room", room_controller_default);
   Stimulus.register("name-form", name_form_controller_default);
+  Stimulus.register("flash", flash_controller_default);
 })();
 /*! Bundled license information:
 

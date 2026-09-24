@@ -17,6 +17,26 @@ RSpec.describe RoomsController, type: :controller do
         expect(response.body).to include("action=\"#{find_room_path}\"")
         expect(response.body).to include('name="code"')
       end
+
+      it 'ページタイトルを設定する' do
+        get :new
+        expect(response.body).to include('<title>Choose You - 抽選ルームを作成</title>')
+      end
+
+      it '通知フラッシュを自動で消える閉じられるメッセージとして表示する' do
+        get :new, flash: { notice: 'ルームから退出しました' }
+        expect(response.body).to include('data-controller="flash"')
+        expect(response.body).to include('data-flash-auto-dismiss-value="true"')
+        expect(response.body).to include('role="status"')
+        expect(response.body).to include('閉じる')
+      end
+
+      it '警告フラッシュを自動で消えないメッセージとして表示する' do
+        get :new, flash: { alert: 'エラーが発生しました' }
+        expect(response.body).to include('data-controller="flash"')
+        expect(response.body).to include('data-flash-auto-dismiss-value="false"')
+        expect(response.body).to include('role="alert"')
+      end
     end
   end
 
@@ -193,6 +213,11 @@ RSpec.describe RoomsController, type: :controller do
         get :show, params: { id: room.id }
         expect(response.body).to include('data-name-form-taken-value')
         expect(response.body).to include(owner_name)
+      end
+
+      it 'ページタイトルにルームIDを含める' do
+        get :show, params: { id: room.id }
+        expect(response.body).to include("<title>Choose You - ルーム #{room.id} に参加</title>")
       end
     end
 
