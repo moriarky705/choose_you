@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run build)",
+      "Bash(npm run build:production)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)"
+    ],
+    "deny": [
+      "Read(./.env*)",
+      "Read(**/secrets/**)",
+      "Read(**/*.key)",
+      "Read(./config/database.yml)"
+    ]
+  }
+}
