@@ -3,14 +3,16 @@
 require 'redis'
 require 'json'
 require 'securerandom'
+require 'set'
 
 # Redis バックエンドを使用した部屋管理サービス
 class RedisRoomService
-  Room = Struct.new(:id, :owner_token, :owner_id, :owner_name, :participants, :created_at, :last_selection, keyword_init: true)
+  Room = Struct.new(:id, :owner_token, :owner_id, :owner_name, :participants, :created_at, :last_selection, :history, keyword_init: true)
   Participant = Struct.new(:token, :id, :name, :joined_at, keyword_init: true)
-  
+
   ROOM_KEY_PREFIX = 'room:'
   ROOM_EXPIRY = 10.days.to_i
+  HISTORY_LIMIT = 20
   
   def initialize
     redis_url = ENV['REDIS_URL'] || 'redis://localhost:6379'
@@ -35,7 +37,8 @@ class RedisRoomService
       owner_name: owner_name,
       participants: [],
       created_at: Time.now.iso8601,
-      last_selection: nil
+      last_selection: nil,
+      history: []
     }
     
     store_room(room_id, room_data)
@@ -53,7 +56,8 @@ class RedisRoomService
     parsed_data = JSON.parse(room_data, symbolize_names: true)
     parsed_data[:participants] = parsed_data[:participants].map { |p| Participant.new(**p.transform_keys(&:to_sym)) }
     parsed_data[:created_at] = Time.parse(parsed_data[:created_at])
-    
+    parsed_data[:history] ||= []
+
     room = Room.new(**parsed_data)
     Rails.logger.debug "🔍 Redis: Find room: id=#{id}, found=true"
     room
@@ -98,22 +102,39 @@ class RedisRoomService
     all_participants
   end
   
-  def select_random(room_id:, count:)
+  def draw_pool(room_id:, include_owner: true, exclude_winners: false)
     room = find_room(room_id)
     return [] unless room
-    
-    all_participants = participant_list(room_id)
-    selected_count = [count, all_participants.size].min
-    selected = all_participants.sample(selected_count)
-    
+
+    build_draw_pool(room, include_owner:, exclude_winners:)
+  end
+
+  def select_random(room_id:, count:, include_owner: true, exclude_winners: false)
+    room = find_room(room_id)
+    return [] unless room
+
+    pool = build_draw_pool(room, include_owner:, exclude_winners:)
+    return [] if pool.empty? || count > pool.size
+
+    selected = pool.sample(count)
+
     # InMemoryRoomServiceと同じデータ構造に統一
-    room.last_selection = {
+    history = room.history || []
+    number = (history.first&.dig(:number) || 0) + 1
+
+    selection = {
       id: SecureRandom.hex(6),
+      number: number,
       at: Time.now,
       count: count,
-      selected: selected.map { |p| { id: p.id, name: p.name } }
+      selected: selected.map { |p| { id: p.id, name: p.name } },
+      include_owner: include_owner,
+      exclude_winners: exclude_winners
     }
-    
+
+    room.last_selection = selection
+    room.history = [selection, *history].first(HISTORY_LIMIT)
+
     store_room_object(room)
     selected
   end
@@ -138,6 +159,19 @@ class RedisRoomService
   def room_key(room_id)
     "#{ROOM_KEY_PREFIX}#{room_id}"
   end
+
+  def build_draw_pool(room, include_owner:, exclude_winners:)
+    participants = participant_list(room.id)
+    # id はレガシールームで nil の場合があるため、常に一意な token で判定する
+    participants = participants.reject { |p| p.token == room.owner_token } unless include_owner
+
+    if exclude_winners
+      winner_ids = (room.history || []).flat_map { |entry| entry[:selected] }.filter_map { |s| s[:id] }.to_set
+      participants = participants.reject { |p| winner_ids.include?(p.id) }
+    end
+
+    participants
+  end
   
   def store_room(room_id, room_data)
     room_json = room_data.to_json
@@ -156,7 +190,8 @@ class RedisRoomService
       owner_name: room.owner_name,
       participants: room.participants.map { |p| p.to_h },
       created_at: room.created_at.iso8601,
-      last_selection: room.last_selection
+      last_selection: room.last_selection,
+      history: room.history || []
     }
     store_room(room.id, room_data)
   end

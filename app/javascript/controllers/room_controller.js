@@ -3,12 +3,15 @@ import consumer from "../channels/consumer"
 
 // Real-time updates for room management
 export default class extends Controller {
-  static values = { roomId: String, owner: Boolean, selfId: String }
-  static targets = ["participants", "selectionList", "countInput", "selectionHeader", "selectionCount", "inviteUrl", "copyFeedback", "copyButton", "selectionStatus", "selectionSubmit", "participantCount", "selectionEmpty", "selfResult", "roulette", "selectionForm", "selectionError"]
+  static values = { roomId: String, owner: Boolean, selfId: String, ownerId: String }
+  static targets = ["participants", "selectionList", "countInput", "selectionHeader", "selectionCount", "inviteUrl", "copyFeedback", "copyButton", "selectionStatus", "selectionSubmit", "participantCount", "selectionEmpty", "selfResult", "roulette", "selectionForm", "selectionError", "eligibleHint", "historyList", "historyCard", "historyData"]
 
   // Connection and initialization
   connect() {
     console.log('Room controller connecting...', this.roomIdValue)
+    this.drawInFlight = false
+    this.pendingHistory = null
+    this.revealPendingId = null
     this.connectionConfig = new ConnectionConfig()
     this.initializeFromServerRenderedState()
     this.setupRealtimeConnection()
@@ -21,10 +24,24 @@ export default class extends Controller {
 
   initializeFromServerRenderedState() {
     this.currentParticipants = this.hasParticipantsTarget
-      ? Array.from(this.participantsTarget.querySelectorAll('[data-participant-name]')).map((el) => ({ name: el.dataset.participantName }))
+      ? Array.from(this.participantsTarget.querySelectorAll('[data-participant-name]')).map((el) => ({ id: el.dataset.participantId || '', name: el.dataset.participantName }))
       : []
 
     this.shownSelectionId = (this.hasSelectionListTarget && this.selectionListTarget.dataset.selectionId) || ''
+
+    this.renderHistory(this.readServerHistory())
+  }
+
+  readServerHistory() {
+    if (!this.hasHistoryDataTarget) return []
+
+    try {
+      const parsed = JSON.parse(this.historyDataTarget.textContent || '[]')
+      return Array.isArray(parsed) ? parsed : []
+    } catch (error) {
+      console.log('Failed to parse history data:', error)
+      return []
+    }
   }
 
   // Real-time connection management
@@ -119,11 +136,147 @@ export default class extends Controller {
     if (this.hasParticipantCountTarget) {
       this.participantCountTarget.textContent = list.length
     }
+
+    this.updateEligible()
+  }
+
+  // Eligible pool / count input helpers (owner controls)
+  includeOwnerCheckbox() {
+    return this.element.querySelector('input[name="include_owner"][type="checkbox"]')
+  }
+
+  excludeWinnersCheckbox() {
+    return this.element.querySelector('input[name="exclude_winners"][type="checkbox"]')
+  }
+
+  includeOwnerChecked() {
+    const checkbox = this.includeOwnerCheckbox()
+    return checkbox ? checkbox.checked : true
+  }
+
+  excludeWinnersChecked() {
+    const checkbox = this.excludeWinnersCheckbox()
+    return checkbox ? checkbox.checked : false
+  }
+
+  eligibleCount() {
+    let pool = this.currentParticipants || []
+
+    if (!this.includeOwnerChecked()) {
+      if (this.ownerIdValue) {
+        pool = pool.filter((p) => p.id !== this.ownerIdValue)
+      } else {
+        // レガシールームでは owner_id が空になりうるため、常に先頭に並ぶオーナーを除外する
+        pool = pool.slice(1)
+      }
+    }
+
+    if (this.excludeWinnersChecked()) {
+      const winnerIds = new Set(
+        (this.history || [])
+          .flatMap((entry) => entry.selected || [])
+          .map((s) => s.id)
+          .filter((id) => Boolean(id))
+      )
+      pool = pool.filter((p) => !winnerIds.has(p.id))
+    }
+
+    return pool.length
+  }
+
+  updateEligible() {
+    if (!this.hasCountInputTarget) return
+
+    const max = this.eligibleCount()
+    const clampedMax = max > 0 ? max : 1
+
+    this.countInputTarget.max = clampedMax
+
+    const current = parseInt(this.countInputTarget.value, 10) || 1
+    this.countInputTarget.value = Math.min(Math.max(current, 1), clampedMax)
+
+    if (this.hasSelectionSubmitTarget && !this.drawInFlight) {
+      this.selectionSubmitTarget.disabled = max <= 0
+      this.selectionSubmitTarget.classList.toggle('opacity-60', max <= 0)
+      this.selectionSubmitTarget.classList.toggle('cursor-not-allowed', max <= 0)
+    }
+
+    if (this.hasEligibleHintTarget) {
+      this.eligibleHintTarget.textContent = max <= 0 ? '抽選対象がいません' : `抽選対象: ${max}人`
+    }
+  }
+
+  stepCount(event) {
+    if (!this.hasCountInputTarget) return
+
+    const step = parseInt(event.currentTarget.dataset.step, 10) || 0
+    const max = Math.max(parseInt(this.countInputTarget.max, 10) || this.eligibleCount() || 1, 1)
+    const current = parseInt(this.countInputTarget.value, 10) || 1
+
+    this.countInputTarget.value = Math.min(Math.max(current + step, 1), max)
+  }
+
+  preset(event) {
+    if (!this.hasCountInputTarget) return
+
+    const max = Math.max(parseInt(this.countInputTarget.max, 10) || this.eligibleCount() || 1, 1)
+    const preset = event.currentTarget.dataset.preset
+
+    let value = 1
+    if (preset === 'half') value = Math.max(1, Math.floor(max / 2))
+    if (preset === 'all') value = max
+
+    this.countInputTarget.value = value
+  }
+
+  // History rendering
+  renderHistory(history) {
+    this.history = history || []
+
+    if (this.hasHistoryCardTarget) {
+      this.historyCardTarget.classList.toggle('hidden', this.history.length === 0)
+    }
+
+    if (this.hasHistoryListTarget) {
+      const renderer = new HistoryRenderer(this.selfIdValue)
+      this.historyListTarget.innerHTML = renderer.render(this.history)
+    }
+
+    this.updateEligible()
+  }
+
+  // 抽選結果と履歴を同時に受け取った際、履歴カードでの先出しによりルーレットの結果が
+  // 事前に分かってしまわないよう、新規（未表示）の抽選結果に付随する履歴は
+  // revealSelection で結果を表示した後に描画する
+  receiveSelectionUpdate(selectionData, history) {
+    const id = selectionData && selectionData.id
+
+    if (id && id === this.revealPendingId) {
+      // 同じ抽選のリベール（ルーレット演出～結果表示）がまだ進行中
+      // （オーナー自身のJSONレスポンスとブロードキャストが競合するケースなど）。
+      // ここで描画するとネタバレになるため、最新の履歴を保留分として差し替えるだけにする
+      this.pendingHistory = history || null
+      return
+    }
+
+    const isNewSelection = Boolean(id) && id !== this.shownSelectionId
+
+    if (isNewSelection) {
+      this.pendingHistory = history || null
+    } else if (history) {
+      this.renderHistory(history)
+    }
+
+    if (selectionData) {
+      this.renderSelection(selectionData)
+    }
   }
 
   renderSelection(selection) {
     if (selection.id && selection.id === this.shownSelectionId) return
     this.shownSelectionId = selection.id
+    // 新しい抽選が割り込んできたら、古いルーレットの id は「リベール待ち」から外れる
+    this.revealPendingId = selection.id
 
     if (this._rouletteCancel) this._rouletteCancel()
     if (this.hasRouletteTarget) this.rouletteTarget.classList.add('hidden')
@@ -140,6 +293,16 @@ export default class extends Controller {
 
   revealSelection(selection, celebrate) {
     this.finishSelection()
+
+    if (this.pendingHistory) {
+      this.renderHistory(this.pendingHistory)
+      this.pendingHistory = null
+    }
+
+    if (this.revealPendingId === selection.id) {
+      this.revealPendingId = null
+    }
+
     if (!this.hasSelectionListTarget) return
 
     const renderer = new SelectionRenderer(this.selfIdValue)
@@ -290,6 +453,7 @@ export default class extends Controller {
       this.selectionErrorTarget.textContent = ''
     }
 
+    this.drawInFlight = true
     this.showSelectionSpinner()
 
     if (!window.fetch || !this.hasSelectionFormTarget) return
@@ -344,8 +508,9 @@ export default class extends Controller {
         if (data.selection) {
           // ブロードキャストが届かない/遅延する場合に備え、レスポンス自体から描画する
           // （このあとブロードキャストが届いても id 一致で二重描画されない）
-          this.renderSelection({ ...data.selection, animate: true })
+          this.receiveSelectionUpdate({ ...data.selection, animate: true }, data.history)
         } else {
+          if (data.history) this.renderHistory(data.history)
           this.finishSelection()
         }
       } catch (parseError) {
@@ -367,16 +532,19 @@ export default class extends Controller {
   }
 
   finishSelection() {
+    this.drawInFlight = false
+
     if (this.hasSelectionStatusTarget) {
       this.selectionStatusTarget.classList.add('hidden')
       this.selectionStatusTarget.classList.remove('inline-flex')
     }
 
     if (this.hasSelectionSubmitTarget) {
-      this.selectionSubmitTarget.disabled = false
-      this.selectionSubmitTarget.classList.remove('opacity-60', 'cursor-not-allowed')
       this.selectionSubmitTarget.value = '抽選開始'
     }
+
+    // 抽選中に固定していたdisabled状態を、現在の抽選対象人数に基づいて再計算する
+    this.updateEligible()
   }
 
   // Copy functionality
@@ -441,8 +609,11 @@ class MessageHandler {
         id: data.selection.id,
         selected: data.selection.selected,
         count: data.selection.count,
-        animate: false
+        animate: false,
+        history: data.history
       })
+    } else if (data.history) {
+      this.controller.renderHistory(data.history)
     }
   }
 
@@ -457,7 +628,10 @@ class MessageHandler {
 
   handleSelectionUpdate(data) {
     if (data.selected) {
-      this.controller.renderSelection({ id: data.id, selected: data.selected, count: data.count, animate: data.animate })
+      this.controller.receiveSelectionUpdate(
+        { id: data.id, selected: data.selected, count: data.count, animate: data.animate },
+        data.history
+      )
 
       // 抽選後に参加者リストが消える問題の対策
       // 現在の参加者リストが空でなければ維持する
@@ -466,6 +640,8 @@ class MessageHandler {
         console.log('🔄 Participants list disappeared after selection, fetching updates...')
         this.controller.fetchUpdates()
       }
+    } else if (data.history) {
+      this.controller.renderHistory(data.history)
     }
   }
 }
@@ -480,14 +656,43 @@ class ParticipantRenderer {
     return participants.map((p, index) => {
       const isSelf = Boolean(this.selfId) && p.id === this.selfId
       const safeName = this.escapeHtml(p.name)
+      const safeId = this.escapeHtml(p.id || '')
 
-      return `<div class="flex items-center p-3 ${isSelf ? 'bg-blue-50' : 'bg-gray-50'} rounded-lg hover:bg-gray-100 transition-colors" data-participant-name="${safeName}">
+      return `<div class="flex items-center p-3 ${isSelf ? 'bg-blue-50 hover:bg-blue-100' : 'bg-gray-50 hover:bg-gray-100'} rounded-lg transition-colors" data-participant-id="${safeId}" data-participant-name="${safeName}">
         <div class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-medium mr-3">
           ${index + 1}
         </div>
         <span class="text-gray-900 font-medium">${safeName}</span>
         ${isSelf ? '<span class="ml-2 text-xs text-blue-600 font-medium">（あなた）</span>' : ''}
       </div>`
+    }).join('')
+  }
+
+  escapeHtml(unsafe) {
+    return unsafe
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;")
+  }
+}
+
+// Draw history rendering
+class HistoryRenderer {
+  constructor(selfId) {
+    this.selfId = selfId
+  }
+
+  render(history) {
+    return history.map((entry) => {
+      const names = (entry.selected || []).map((s) => {
+        const safeName = this.escapeHtml(s.name)
+        const isSelf = Boolean(this.selfId) && s.id === this.selfId
+        return isSelf ? `<strong>${safeName}</strong>` : safeName
+      }).join('、')
+
+      return `<li><span class="font-medium">第${entry.number}回</span>：${names}</li>`
     }).join('')
   }
 

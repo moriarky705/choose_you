@@ -21,7 +21,7 @@ class RoomChannel < ApplicationCable::Channel
     room = RoomRegistry.find_room(room_id)
     if room&.last_selection && room.last_selection[:selected]
       last = room.last_selection
-      transmit({ type: 'selection', id: last[:id], selected: last[:selected], count: last[:count] })
+      transmit({ type: 'selection', id: last[:id], selected: last[:selected], count: last[:count], history: ActionCableBroadcastService.compact_history(room.history) })
       Rails.logger.info "🎯 ActionCable: Sent last selection to room #{room_id}"
     end
   rescue => e

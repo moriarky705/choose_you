@@ -263,7 +263,62 @@ RSpec.describe RoomsController, type: :controller do
         post :select, params: { id: room.id, count: '99' }, format: :json
 
         expect(response).to have_http_status(:unprocessable_entity)
-        expect(JSON.parse(response.body)['error']).to be_present
+        expect(JSON.parse(response.body)['error']).to eq('抽選対象(2人)以下の人数を指定してください')
+      end
+
+      it 'JSON成功レスポンスにhistoryを含める' do
+        post :select, params: { id: room.id, count: '1' }, format: :json
+
+        json = JSON.parse(response.body)
+        expect(json['history']).to be_present
+        expect(json['history'].first).to include('id', 'number', 'selected')
+        expect(json['history'].first['selected']).to all(include('id', 'name'))
+      end
+
+      it 'include_owner: "0"の場合オーナーを抽選対象から除外する' do
+        post :select, params: { id: room.id, count: '1', include_owner: '0' }, format: :json
+
+        json = JSON.parse(response.body)
+        selected_ids = json['selection']['selected'].map { |s| s['id'] }
+        expect(selected_ids).not_to include(room.owner_id)
+      end
+
+      it 'exclude_winners: "1"の場合、前回の当選者を抽選対象から除外する' do
+        post :select, params: { id: room.id, count: '1' }, format: :json
+        first_winner_id = JSON.parse(response.body)['selection']['selected'].first['id']
+
+        post :select, params: { id: room.id, count: '1', exclude_winners: '1' }, format: :json
+        second_selected_ids = JSON.parse(response.body)['selection']['selected'].map { |s| s['id'] }
+
+        expect(second_selected_ids).not_to include(first_winner_id)
+      end
+
+      it 'include_ownerパラメータがない場合はオーナーを抽選対象に含める（後方互換）' do
+        post :select, params: { id: room.id, count: '2' }, format: :json
+
+        selected_ids = JSON.parse(response.body)['selection']['selected'].map { |s| s['id'] }
+        expect(selected_ids).to include(room.owner_id)
+      end
+
+      it '抽選対象が空の場合422を返す' do
+        solo_room, solo_token = RoomRegistry.create_room(owner_name: 'ソロオーナー')
+        cookies.signed["owner_token_#{solo_room.id}"] = solo_token
+
+        post :select, params: { id: solo_room.id, count: '1', include_owner: '0' }, format: :json
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(JSON.parse(response.body)['error']).to eq('抽選対象の参加者がいません')
+      end
+
+      it '検証後の抽選でプールが変化して空配列が返った場合は422を返しブロードキャストしない（競合対策）' do
+        allow(RoomRegistry).to receive(:select_random).and_return([])
+
+        expect {
+          post :select, params: { id: room.id, count: '1' }, format: :json
+        }.not_to have_broadcasted_to("room_#{room.id}")
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(JSON.parse(response.body)['error']).to eq('抽選できませんでした。もう一度お試しください')
       end
     end
   end
@@ -289,6 +344,9 @@ RSpec.describe RoomsController, type: :controller do
       expect(json['selection']).to be_present
       expect(json['selection']['id']).to be_present
       expect(json['selection']['count']).to eq(1)
+      expect(json['history']).to be_present
+      expect(json['history'].first).to include('id', 'number', 'selected')
+      expect(json['history'].first['selected']).to all(include('id', 'name'))
     end
 
     it 'トークンを含まない' do

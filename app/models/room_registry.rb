@@ -2,10 +2,11 @@
 
 require 'securerandom'
 require 'thread'
+require 'set'
 
 # 部屋と参加者を管理するレジストリ（Redis or InMemory）
 class RoomRegistry
-  Room = Struct.new(:id, :owner_token, :owner_id, :owner_name, :participants, :created_at, :last_selection, keyword_init: true)
+  Room = Struct.new(:id, :owner_token, :owner_id, :owner_name, :participants, :created_at, :last_selection, :history, keyword_init: true)
   Participant = Struct.new(:token, :id, :name, :joined_at, keyword_init: true)
 
   class << self
@@ -26,7 +27,7 @@ class RoomRegistry
     end
 
     # 委譲メソッド群を動的に定義
-    %i[create_room find_room add_participant participant_list select_random room_exists? cleanup_expired_rooms].each do |method_name|
+    %i[create_room find_room add_participant participant_list draw_pool select_random room_exists? cleanup_expired_rooms].each do |method_name|
       define_method(method_name) do |*args, **kwargs|
         service.public_send(method_name, *args, **kwargs)
       end
@@ -36,8 +37,10 @@ end
 
 # インメモリ実装（開発・テスト用）
 class InMemoryRoomService
-  Room = Struct.new(:id, :owner_token, :owner_id, :owner_name, :participants, :created_at, :last_selection, keyword_init: true)
+  Room = Struct.new(:id, :owner_token, :owner_id, :owner_name, :participants, :created_at, :last_selection, :history, keyword_init: true)
   Participant = Struct.new(:token, :id, :name, :joined_at, keyword_init: true)
+
+  HISTORY_LIMIT = 20
 
   def initialize
     @rooms = {}
@@ -55,9 +58,10 @@ class InMemoryRoomService
       owner_name: owner_name,
       participants: [],
       created_at: Time.now,
-      last_selection: nil
+      last_selection: nil,
+      history: []
     )
-    
+
     store_room(room_id, room)
     Rails.logger.info "🏠 InMemory: Created room: id=#{room_id}, owner=#{owner_name}"
     [room, owner_token]
@@ -87,16 +91,23 @@ class InMemoryRoomService
     build_complete_participant_list(room)
   end
 
-  def select_random(room_id:, count:)
+  def draw_pool(room_id:, include_owner: true, exclude_winners: false)
     room = find_room(room_id)
     return [] unless room
-    
-    all_participants = participant_list(room_id)
-    all_participants = all_participants.shuffle
-    selected_count = [count, all_participants.size].min
-    selected = all_participants.sample(selected_count)
-    
-    update_last_selection(room, selected, count)
+
+    build_draw_pool(room, include_owner:, exclude_winners:)
+  end
+
+  def select_random(room_id:, count:, include_owner: true, exclude_winners: false)
+    room = find_room(room_id)
+    return [] unless room
+
+    pool = build_draw_pool(room, include_owner:, exclude_winners:)
+    return [] if pool.empty? || count > pool.size
+
+    selected = pool.sample(count)
+
+    update_last_selection(room, selected, count, include_owner:, exclude_winners:)
     selected
   end
 
@@ -162,12 +173,34 @@ class InMemoryRoomService
     [owner_as_participant, *room.participants]
   end
 
-  def update_last_selection(room, selected, count)
-    room.last_selection = {
+  def build_draw_pool(room, include_owner:, exclude_winners:)
+    participants = build_complete_participant_list(room)
+    # id はレガシールームで nil の場合があるため、常に一意な token で判定する
+    participants = participants.reject { |p| p.token == room.owner_token } unless include_owner
+
+    if exclude_winners
+      winner_ids = (room.history || []).flat_map { |entry| entry[:selected] }.filter_map { |s| s[:id] }.to_set
+      participants = participants.reject { |p| winner_ids.include?(p.id) }
+    end
+
+    participants
+  end
+
+  def update_last_selection(room, selected, count, include_owner:, exclude_winners:)
+    history = room.history || []
+    number = (history.first&.dig(:number) || 0) + 1
+
+    selection = {
       id: SecureRandom.hex(6),
+      number: number,
       at: Time.now,
       count: count,
-      selected: selected.map { |p| { id: p.id, name: p.name } }
+      selected: selected.map { |p| { id: p.id, name: p.name } },
+      include_owner: include_owner,
+      exclude_winners: exclude_winners
     }
+
+    room.last_selection = selection
+    room.history = [selection, *history].first(HISTORY_LIMIT)
   end
 end

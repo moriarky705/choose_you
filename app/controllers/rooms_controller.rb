@@ -57,15 +57,24 @@ class RoomsController < ApplicationController
   def select
     return head :forbidden unless authorization_service.owner_access?
 
-    validation_error = validate_selection_params
+    include_owner = include_owner_param
+    exclude_winners = params[:exclude_winners] == '1'
+
+    validation_error = validate_selection_params(include_owner:, exclude_winners:)
     return validation_error if validation_error
 
     count = params[:count].to_i
-    RoomRegistry.select_random(room_id: params[:id], count:)
-    selection = RoomRegistry.find_room(params[:id]).last_selection
+    selected = RoomRegistry.select_random(room_id: params[:id], count:, include_owner:, exclude_winners:)
+
+    if selected.empty?
+      return render_selection_error(count, '抽選できませんでした。もう一度お試しください')
+    end
+
+    room = RoomRegistry.find_room(params[:id])
+    selection = room.last_selection
 
     # 抽選結果を配信
-    ActionCableBroadcastService.broadcast_selection_update(params[:id], selection)
+    ActionCableBroadcastService.broadcast_selection_update(params[:id], selection, room.history)
     # 参加者リストも同時に再配信（UIの整合性を保つため）
     ActionCableBroadcastService.broadcast_participants_update(params[:id])
 
@@ -73,7 +82,8 @@ class RoomsController < ApplicationController
       format.json do
         render json: {
           ok: true,
-          selection: { id: selection[:id], selected: selection[:selected], count: selection[:count] }
+          selection: { id: selection[:id], selected: selection[:selected], count: selection[:count] },
+          history: ActionCableBroadcastService.compact_history(room.history)
         }
       end
       format.html { redirect_to room_path(params[:id], count: count) }
@@ -117,6 +127,7 @@ class RoomsController < ApplicationController
     @last_selection = @room.last_selection
     @last_count = params[:count]&.to_i || 1
     @self_id = authorized_user.id
+    @history = @room.history || []
   end
 
   def redirect_to_room_if_already_joined
@@ -142,16 +153,24 @@ class RoomsController < ApplicationController
     set_secure_cookie(participant_cookie_key(params[:id]), token)
   end
 
-  def validate_selection_params
+  def include_owner_param
+    params.key?(:include_owner) ? params[:include_owner] == '1' : true
+  end
+
+  def validate_selection_params(include_owner:, exclude_winners:)
     count = params[:count].to_i
-    participants = RoomRegistry.participant_list(params[:id])
+    pool = RoomRegistry.draw_pool(room_id: params[:id], include_owner:, exclude_winners:)
 
     if count <= 0
       return render_selection_error(count, '1以上の人数を指定してください')
     end
 
-    if count > participants.size
-      return render_selection_error(count, "参加者数(#{participants.size})以下の人数を指定してください")
+    if pool.empty?
+      return render_selection_error(count, '抽選対象の参加者がいません')
+    end
+
+    if count > pool.size
+      return render_selection_error(count, "抽選対象(#{pool.size}人)以下の人数を指定してください")
     end
 
     false
@@ -169,6 +188,7 @@ class RoomsController < ApplicationController
     participants = RoomRegistry.participant_list(params[:id])
     data = { participants: participants.map { |p| { id: p.id, name: p.name } } }
     data[:selection] = @room.last_selection if @room.last_selection
+    data[:history] = ActionCableBroadcastService.compact_history(@room.history)
     data
   end
 

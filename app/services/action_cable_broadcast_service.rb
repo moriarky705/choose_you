@@ -6,8 +6,13 @@ class ActionCableBroadcastService
     new(room_id).broadcast_participants_update
   end
 
-  def self.broadcast_selection_update(room_id, selection)
-    new(room_id).broadcast_selection_update(selection)
+  def self.broadcast_selection_update(room_id, selection, history)
+    new(room_id).broadcast_selection_update(selection, history)
+  end
+
+  # ブロードキャスト/JSON/チャンネル送信で共通利用する、トークンを含まない抽選履歴の圧縮表現
+  def self.compact_history(history)
+    (history || []).map { |entry| { id: entry[:id], number: entry[:number], selected: entry[:selected] } }
   end
 
   def initialize(room_id)
@@ -25,13 +30,14 @@ class ActionCableBroadcastService
     log_broadcast_error(e)
   end
 
-  def broadcast_selection_update(selection)
+  def broadcast_selection_update(selection, history)
     broadcast_message(
       type: 'selection',
       id: selection[:id],
       selected: selection[:selected],
       count: selection[:count],
-      animate: true
+      animate: true,
+      history: self.class.compact_history(history)
     )
     log_broadcast('selection', selection[:selected].size)
   rescue => e

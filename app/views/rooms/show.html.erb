@@ -1,5 +1,5 @@
 <div class="min-h-screen bg-gray-50">
-  <div class="max-w-6xl mx-auto px-4 py-6" data-controller="room" data-room-room-id-value="<%= @room.id %>" data-room-owner-value="<%= @owner_view %>" data-room-self-id-value="<%= @self_id %>">
+  <div class="max-w-6xl mx-auto px-4 py-6" data-controller="room" data-room-room-id-value="<%= @room.id %>" data-room-owner-value="<%= @owner_view %>" data-room-self-id-value="<%= @self_id %>" data-room-owner-id-value="<%= @room.owner_id %>">
     <!-- Material Design Header Card -->
     <div class="bg-white rounded-lg shadow-md mb-6 overflow-hidden">
       <div class="bg-indigo-600 px-6 py-4">
@@ -55,12 +55,43 @@
           抽選設定
         </h2>
         
-        <%= form_with url: select_room_path(@room.id), method: :post, local: true, class: 'flex items-end gap-4',
+        <%= form_with url: select_room_path(@room.id), method: :post, local: true, class: 'flex flex-wrap items-end gap-4',
             data: { action: 'submit->room#startSelection', room_target: 'selectionForm' } do %>
-          <div class="flex-1">
+          <div class="flex-1 min-w-0">
             <label class="block text-sm font-medium text-gray-700 mb-1">抽選人数</label>
-            <%= number_field_tag :count, @last_count, min: 1,
-                class: 'block w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500' %>
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" data-action="click->room#stepCount" data-step="-1"
+                      class="w-9 h-9 flex items-center justify-center border border-gray-300 rounded text-gray-700 hover:bg-gray-50">−</button>
+              <%= number_field_tag :count, @last_count, min: 1, max: @participants.size,
+                  data: { room_target: 'countInput' },
+                  class: 'w-20 border border-gray-300 rounded px-3 py-2 text-center focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500' %>
+              <button type="button" data-action="click->room#stepCount" data-step="1"
+                      class="w-9 h-9 flex items-center justify-center border border-gray-300 rounded text-gray-700 hover:bg-gray-50">＋</button>
+              <button type="button" data-action="click->room#preset" data-preset="one"
+                      class="px-2 py-1 text-xs border border-gray-300 rounded text-gray-600 hover:bg-gray-50">1人</button>
+              <button type="button" data-action="click->room#preset" data-preset="half"
+                      class="px-2 py-1 text-xs border border-gray-300 rounded text-gray-600 hover:bg-gray-50">半分</button>
+              <button type="button" data-action="click->room#preset" data-preset="all"
+                      class="px-2 py-1 text-xs border border-gray-300 rounded text-gray-600 hover:bg-gray-50">全員</button>
+            </div>
+
+            <div class="mt-3 flex flex-wrap items-center gap-4">
+              <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+                <%= hidden_field_tag :include_owner, '0', id: nil %>
+                <%= check_box_tag :include_owner, '1', true,
+                    data: { action: 'change->room#updateEligible' },
+                    class: 'rounded border-gray-300 text-indigo-600 focus:ring-indigo-500' %>
+                自分（オーナー）も抽選に含める
+              </label>
+              <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+                <%= check_box_tag :exclude_winners, '1', false,
+                    data: { action: 'change->room#updateEligible' },
+                    class: 'rounded border-gray-300 text-indigo-600 focus:ring-indigo-500' %>
+                これまでの当選者を除外する
+              </label>
+            </div>
+
+            <p data-room-target="eligibleHint" class="text-xs text-gray-500 mt-2">抽選対象: <%= @participants.size %>人</p>
           </div>
           <div class="flex items-center gap-3">
             <span data-room-target="selectionStatus" class="hidden items-center text-sm text-gray-600" role="status" aria-live="polite">
@@ -105,7 +136,7 @@
         <div data-room-target="participants" class="space-y-3 min-h-[200px]">
           <% @participants.each_with_index do |p, index| %>
             <% is_self = p.id.present? && p.id == @self_id %>
-            <div class="flex items-center p-3 <%= is_self ? 'bg-blue-50' : 'bg-gray-50' %> rounded-lg hover:bg-gray-100 transition-colors" data-participant-name="<%= p.name %>">
+            <div class="flex items-center p-3 <%= is_self ? 'bg-blue-50 hover:bg-blue-100' : 'bg-gray-50 hover:bg-gray-100' %> rounded-lg transition-colors" data-participant-id="<%= p.id %>" data-participant-name="<%= p.name %>">
               <div class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-medium mr-3">
                 <%= index + 1 %>
               </div>
@@ -165,6 +196,31 @@
           <p class="text-center">抽選結果がここに表示されます</p>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- History Card -->
+  <div class="bg-white rounded-lg shadow-md overflow-hidden mt-6 <%= 'hidden' if @history.blank? %>" data-room-target="historyCard">
+    <div class="bg-gray-700 px-6 py-4">
+      <h2 class="text-lg font-medium text-white flex items-center">
+        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>
+        抽選履歴
+      </h2>
+    </div>
+    <div class="p-6">
+      <ol data-room-target="historyList" class="space-y-2 text-sm text-gray-700">
+        <% @history.each do |entry| %>
+          <li>
+            <span class="font-medium">第<%= entry[:number] %>回</span>：
+            <%= safe_join(entry[:selected].map { |s|
+                  s[:id].present? && s[:id] == @self_id ? content_tag(:strong, s[:name]) : s[:name]
+                }, '、') %>
+          </li>
+        <% end %>
+      </ol>
+      <script type="application/json" data-room-target="historyData"><%= raw json_escape(ActionCableBroadcastService.compact_history(@history).to_json) %></script>
     </div>
   </div>
 

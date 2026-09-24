@@ -55,6 +55,14 @@ RSpec.describe RoomChannel, type: :channel do
         expect(selection_message['id']).to be_present
         expect(selection_message).not_to have_key('animate')
       end
+
+      it '抽選結果メッセージにhistoryを含める' do
+        subscribe(room_id: @room.id)
+
+        selection_message = transmissions.find { |t| t['type'] == 'selection' }
+        expect(selection_message['history']).to be_present
+        expect(selection_message['history'].first).to include('id', 'number', 'selected')
+      end
     end
   end
 
