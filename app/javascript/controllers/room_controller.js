@@ -15,6 +15,7 @@ export default class extends Controller {
     this.revealPendingId = null
     this.qrGenerated = false
     this.selfRemoved = false
+    this.leaving = false
     this.connectionConfig = new ConnectionConfig()
     this.setConnectionState('connecting')
     this.initializeFromServerRenderedState()
@@ -171,7 +172,7 @@ export default class extends Controller {
 
     if (!this.hasParticipantsTarget) return
 
-    if (!this.selfRemoved && !this.ownerValue && this.selfIdValue && !list.some((p) => p.id === this.selfIdValue)) {
+    if (!this.selfRemoved && !this.leaving && !this.ownerValue && this.selfIdValue && !list.some((p) => p.id === this.selfIdValue)) {
       this.selfRemoved = true
       window.location.reload()
       return
@@ -673,7 +674,11 @@ export default class extends Controller {
 
   // Leave room (participants only)
   confirmLeave(event) {
-    if (!window.confirm('このルームから退出しますか？')) event.preventDefault()
+    if (!window.confirm('このルームから退出しますか？')) {
+      event.preventDefault()
+    } else {
+      this.leaving = true
+    }
   }
 
   // Remove participant (owner only)

@@ -11140,6 +11140,7 @@
       this.revealPendingId = null;
       this.qrGenerated = false;
       this.selfRemoved = false;
+      this.leaving = false;
       this.connectionConfig = new ConnectionConfig();
       this.setConnectionState("connecting");
       this.initializeFromServerRenderedState();
@@ -11266,7 +11267,7 @@
     renderParticipants(list) {
       this.currentParticipants = list;
       if (!this.hasParticipantsTarget) return;
-      if (!this.selfRemoved && !this.ownerValue && this.selfIdValue && !list.some((p) => p.id === this.selfIdValue)) {
+      if (!this.selfRemoved && !this.leaving && !this.ownerValue && this.selfIdValue && !list.some((p) => p.id === this.selfIdValue)) {
         this.selfRemoved = true;
         window.location.reload();
         return;
@@ -11657,7 +11658,11 @@
     }
     // Leave room (participants only)
     confirmLeave(event) {
-      if (!window.confirm("\u3053\u306E\u30EB\u30FC\u30E0\u304B\u3089\u9000\u51FA\u3057\u307E\u3059\u304B\uFF1F")) event.preventDefault();
+      if (!window.confirm("\u3053\u306E\u30EB\u30FC\u30E0\u304B\u3089\u9000\u51FA\u3057\u307E\u3059\u304B\uFF1F")) {
+        event.preventDefault();
+      } else {
+        this.leaving = true;
+      }
     }
     // Remove participant (owner only)
     async removeParticipant(event) {
