@@ -33,6 +33,9 @@
 
 /public/assets
 
+# Ignore installed node packages (npm ci reinstalls from package-lock.json).
+/node_modules
+
 # Ignore master key for decrypting credentials and more.
 /config/master.key
 .github/workflows/ci.yml
