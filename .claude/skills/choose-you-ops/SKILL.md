@@ -55,6 +55,8 @@ Wait until `http://localhost:3000/up` returns 200, then use the wmux browser pan
 4. Run a draw and confirm: results appear, participant count and empty states update, no console errors (`wmux browser eval` to inspect), confetti fires once.
 5. Stop the server when done: `docker stop choose_you_dev`.
 
+If `wmux` is not on PATH or not running (the CLI lives at `/mnt/c/Users/morin/Downloads/wmux-0.7.0-win-x64/resources/cli/wmux.js`; run it with `node` and it prints "wmux is not running" when the app is closed), fall back to `curl` with separate cookie jars per role: fetch the `authenticity_token` from the form, POST `/rooms` and `/rooms/:id/join`, then inspect redirects, cookies, the rendered HTML and `/rooms/:id/updates`. Tell the user that JS behavior was not checked visually.
+
 ## 4. Deploy (Render)
 
 Render builds from the repo per `render.yaml`. Before deploying:
