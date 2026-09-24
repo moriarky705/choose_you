@@ -156,7 +156,7 @@ class InMemoryRoomService
       joined_at: room.created_at
     )
     
-    [*room.participants, owner_as_participant]
+    [owner_as_participant, *room.participants]
   end
 
   def update_last_selection(room, selected, count)

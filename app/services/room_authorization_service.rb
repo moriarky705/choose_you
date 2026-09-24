@@ -2,9 +2,8 @@
 
 # ルームアクセス認証を管理するサービス
 class RoomAuthorizationService
-  def initialize(room, params, cookies)
+  def initialize(room, cookies)
     @room = room
-    @params = params
     @cookies = cookies
   end
 
@@ -17,18 +16,18 @@ class RoomAuthorizationService
 
   def owner_access?
     return false unless @room
-    
+
     token = owner_token
-    token.present? && token == @room.owner_token
+    token.present? && ActiveSupport::SecurityUtils.secure_compare(token, @room.owner_token)
   end
 
   def participant_access?
     return false unless @room
-    
+
     token = participant_token
-    return false unless token
-    
-    @room.participants.any? { |p| p.token == token }
+    return false if token.blank?
+
+    @room.participants.any? { |p| ActiveSupport::SecurityUtils.secure_compare(token, p.token) }
   end
 
   private
@@ -43,7 +42,7 @@ class RoomAuthorizationService
 
   def participant_user
     token = participant_token
-    participant = @room.participants.find { |p| p.token == token }
+    participant = @room.participants.find { |p| ActiveSupport::SecurityUtils.secure_compare(token, p.token) }
     return nil unless participant
 
     @participant_user ||= AuthorizedUser.new(
@@ -54,12 +53,11 @@ class RoomAuthorizationService
   end
 
   def owner_token
-    @params[:owner_token] || @cookies.signed[:owner_token]
+    @cookies.signed["owner_token_#{@room.id}"] || @cookies.signed[:owner_token]
   end
 
   def participant_token
-    cookie_key = "participant_token_#{@room.id}"
-    @cookies.signed[cookie_key] || @params[:participant_token]
+    @cookies.signed["participant_token_#{@room.id}"]
   end
 
   # 認証済みユーザーの情報を格納する値オブジェクト

@@ -23,7 +23,23 @@ RSpec.describe RoomsController, type: :controller do
 
     it 'オーナートークンをクッキーに保存する' do
       post :create, params: { owner_name: owner_name }
-      expect(cookies.signed[:owner_token]).to be_present
+      room_id = response.location.match(%r{/rooms/([a-z0-9]{6})})[1]
+      expect(cookies.signed["owner_token_#{room_id}"]).to be_present
+    end
+
+    it 'リダイレクト先のURLにowner_tokenを含めない' do
+      post :create, params: { owner_name: owner_name }
+      expect(response.location).not_to include('owner_token')
+    end
+
+    it '複数のルームを作成してもそれぞれのオーナー権限を保持する' do
+      post :create, params: { owner_name: owner_name }
+      first_room_id = response.location.match(%r{/rooms/([a-z0-9]{6})})[1]
+
+      post :create, params: { owner_name: owner_name }
+
+      get :show, params: { id: first_room_id }
+      expect(assigns(:owner_view)).to be true
     end
 
     context 'パラメータが不正な場合' do
@@ -49,7 +65,7 @@ RSpec.describe RoomsController, type: :controller do
 
     context 'オーナーとしてアクセスする場合' do
       before do
-        cookies.signed[:owner_token] = room.owner_token
+        cookies.signed["owner_token_#{room.id}"] = room.owner_token
       end
 
       it 'ルーム画面を表示する' do
@@ -88,6 +104,30 @@ RSpec.describe RoomsController, type: :controller do
         expect(response).to render_template(:join_form)
       end
     end
+
+    context 'owner_tokenパラメータ付きの旧リンクでアクセスする場合' do
+      it '有効なトークンならクッキーを設定してリダイレクトする' do
+        get :show, params: { id: room.id, owner_token: room.owner_token }
+        expect(response).to redirect_to(room_path(room.id))
+        expect(cookies.signed["owner_token_#{room.id}"]).to eq(room.owner_token)
+      end
+
+      it '無効なトークンならクッキーを設定せずリダイレクトする' do
+        get :show, params: { id: room.id, owner_token: 'invalid_token' }
+        expect(response).to redirect_to(room_path(room.id))
+        expect(cookies.signed["owner_token_#{room.id}"]).to be_nil
+      end
+    end
+
+    context 'participant_tokenパラメータ付きの旧リンクでアクセスする場合' do
+      let!(:participant) { RoomRegistry.add_participant(room_id: room.id, name: '参加者') }
+
+      it '有効なトークンならクッキーを設定してリダイレクトする' do
+        get :show, params: { id: room.id, participant_token: participant.token }
+        expect(response).to redirect_to(room_path(room.id))
+        expect(cookies.signed["participant_token_#{room.id}"]).to eq(participant.token)
+      end
+    end
   end
 
   describe 'POST #join' do
@@ -102,6 +142,12 @@ RSpec.describe RoomsController, type: :controller do
 
       expect(response).to have_http_status(:redirect)
       expect(response.location).to include(room_path(room.id))
+    end
+
+    it 'リダイレクト先のURLにparticipant_tokenを含めない' do
+      post :join, params: { id: room.id, name: participant_name }
+      expect(response.location).not_to include('participant_token')
+      expect(response.location).to end_with(room_path(room.id))
     end
 
     it '参加者トークンをクッキーに保存する' do
@@ -140,7 +186,7 @@ RSpec.describe RoomsController, type: :controller do
     let!(:participant) { RoomRegistry.add_participant(room_id: room.id, name: '参加者') }
 
     before do
-      cookies.signed[:owner_token] = room.owner_token
+      cookies.signed["owner_token_#{room.id}"] = room.owner_token
     end
 
     it '抽選を実行してリダイレクトする' do
@@ -160,7 +206,7 @@ RSpec.describe RoomsController, type: :controller do
 
     context 'オーナーでない場合' do
       before do
-        cookies.signed[:owner_token] = 'invalid_token'
+        cookies.signed["owner_token_#{room.id}"] = 'invalid_token'
       end
 
       it 'Forbiddenエラーを返す' do
@@ -211,14 +257,14 @@ RSpec.describe RoomsController, type: :controller do
     let!(:room) { RoomRegistry.create_room(owner_name: owner_name).first }
 
     describe '#owner_token_matches?' do
-      it 'オーナートークンが一致する場合trueを返す' do
+      it '旧仕様のグローバルなowner_tokenクッキーでもオーナー権限が有効' do
         cookies.signed[:owner_token] = room.owner_token
         get :show, params: { id: room.id }
         expect(assigns(:owner_view)).to be true
       end
 
       it 'オーナートークンが一致しない場合falseを返す' do
-        cookies.signed[:owner_token] = 'invalid_token'
+        cookies.signed["owner_token_#{room.id}"] = 'invalid_token'
         get :show, params: { id: room.id }
         expect(response).to render_template(:join_form)
       end

@@ -9,26 +9,30 @@ class RoomsController < ApplicationController
   def create
     owner_name = params.require(:owner_name)
     room, owner_token = RoomRegistry.create_room(owner_name:)
-    set_secure_cookie(:owner_token, owner_token)
-    redirect_to room_path(room.id, owner_token:)
+    set_secure_cookie(owner_cookie_key(room.id), owner_token)
+    redirect_to room_path(room.id)
   end
 
   def show
     # 部屋の存在確認を強化（デバッグログ追加）
     Rails.logger.info "🔍 Room lookup: id=#{params[:id]}, @room=#{@room.present? ? 'found' : 'nil'}, registry_exists=#{RoomRegistry.room_exists?(params[:id])}"
-    
+
     unless @room && RoomRegistry.room_exists?(@room.id)
       Rails.logger.warn "❌ Room not found: id=#{params[:id]}, @room=#{@room.present?}, registry_exists=#{RoomRegistry.room_exists?(params[:id])}"
       return redirect_to root_path, alert: '部屋が見つかりません。部屋が削除されたか、セッションが期限切れの可能性があります。'
     end
 
+    if params[:owner_token].present? || params[:participant_token].present?
+      adopt_legacy_token_params
+      return redirect_to room_path(@room.id, count: params[:count].presence)
+    end
+
     authorized_user = authorization_service.authorized_user
-    
+
     if authorized_user.nil?
       render :join_form and return
     end
 
-    setup_participant_cookie(authorized_user) if authorized_user.participant?
     setup_show_variables(authorized_user)
   end
 
@@ -47,7 +51,7 @@ class RoomsController < ApplicationController
       ActionCableBroadcastService.broadcast_participants_update(params[:id])
     end
     
-    redirect_to room_path(params[:id], participant_token: participant&.token)
+    redirect_to room_path(params[:id])
   end
 
   def select
@@ -81,14 +85,20 @@ class RoomsController < ApplicationController
   end
 
   def authorization_service
-    @authorization_service ||= RoomAuthorizationService.new(@room, params, cookies)
+    @authorization_service ||= RoomAuthorizationService.new(@room, cookies)
   end
 
-  def setup_participant_cookie(authorized_user)
-    cookie_key = participant_cookie_key(@room.id)
-    return if cookies.signed[cookie_key].present?
-    
-    set_secure_cookie(cookie_key, authorized_user.token)
+  def adopt_legacy_token_params
+    owner_token = params[:owner_token]
+    if owner_token.present? && ActiveSupport::SecurityUtils.secure_compare(owner_token, @room.owner_token)
+      set_secure_cookie(owner_cookie_key(@room.id), owner_token)
+    end
+
+    participant_token = params[:participant_token]
+    if participant_token.present?
+      participant = @room.participants.find { |p| ActiveSupport::SecurityUtils.secure_compare(participant_token, p.token) }
+      set_secure_cookie(participant_cookie_key(@room.id), participant_token) if participant
+    end
   end
 
   def setup_show_variables(authorized_user)
@@ -148,6 +158,10 @@ class RoomsController < ApplicationController
 
   def participant_cookie_key(room_id)
     "participant_token_#{room_id}"
+  end
+
+  def owner_cookie_key(room_id)
+    "owner_token_#{room_id}"
   end
 
   # Render.com対応のセキュアなCookie設定

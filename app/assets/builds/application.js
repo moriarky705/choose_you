@@ -9027,7 +9027,7 @@
   // app/javascript/controllers/room_controller.js
   var room_controller_default = class extends Controller {
     static values = { roomId: String, owner: Boolean };
-    static targets = ["participants", "selectionList", "countInput", "selectionHeader", "selectionCount", "inviteUrl", "copyFeedback", "copyButton", "selectionStatus", "selectionSubmit"];
+    static targets = ["participants", "selectionList", "countInput", "selectionHeader", "selectionCount", "inviteUrl", "copyFeedback", "copyButton", "selectionStatus", "selectionSubmit", "participantCount", "selectionEmpty"];
     // Connection and initialization
     connect() {
       console.log("Room controller connecting...", this.roomIdValue);
@@ -9111,6 +9111,9 @@
       console.log("\u{1F3A8} Rendering participants:", list.length, "participants");
       const renderer = new ParticipantRenderer();
       this.participantsTarget.innerHTML = renderer.render(list);
+      if (this.hasParticipantCountTarget) {
+        this.participantCountTarget.textContent = list.length;
+      }
     }
     renderSelection(selected, count) {
       this.finishSelection();
@@ -9118,6 +9121,9 @@
       const renderer = new SelectionRenderer();
       this.selectionListTarget.innerHTML = renderer.render(selected);
       this.updateSelectionHeader(selected.length);
+      if (this.hasSelectionEmptyTarget) {
+        this.selectionEmptyTarget.classList.add("hidden");
+      }
       this.animateSelectionResults();
       this.celebrateSelection(selected);
     }

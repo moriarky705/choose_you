@@ -107,6 +107,7 @@ RSpec.describe RoomRegistry, type: :model do
         expect(participants.size).to eq(3)
         participant_names = participants.map(&:name)
         expect(participant_names).to include(owner_name, '参加者1', '参加者2')
+        expect(participants.first.name).to eq(owner_name)
       end
     end
 

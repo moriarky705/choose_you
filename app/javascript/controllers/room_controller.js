@@ -4,7 +4,7 @@ import consumer from "../channels/consumer"
 // Real-time updates for room management
 export default class extends Controller {
   static values = { roomId: String, owner: Boolean }
-  static targets = ["participants", "selectionList", "countInput", "selectionHeader", "selectionCount", "inviteUrl", "copyFeedback", "copyButton", "selectionStatus", "selectionSubmit"]
+  static targets = ["participants", "selectionList", "countInput", "selectionHeader", "selectionCount", "inviteUrl", "copyFeedback", "copyButton", "selectionStatus", "selectionSubmit", "participantCount", "selectionEmpty"]
 
   // Connection and initialization
   connect() {
@@ -105,15 +105,24 @@ export default class extends Controller {
     console.log('🎨 Rendering participants:', list.length, 'participants')
     const renderer = new ParticipantRenderer()
     this.participantsTarget.innerHTML = renderer.render(list)
+
+    if (this.hasParticipantCountTarget) {
+      this.participantCountTarget.textContent = list.length
+    }
   }
 
   renderSelection(selected, count) {
     this.finishSelection()
     if (!this.hasSelectionListTarget) return
-    
+
     const renderer = new SelectionRenderer()
     this.selectionListTarget.innerHTML = renderer.render(selected)
     this.updateSelectionHeader(selected.length)
+
+    if (this.hasSelectionEmptyTarget) {
+      this.selectionEmptyTarget.classList.add('hidden')
+    }
+
     this.animateSelectionResults()
     this.celebrateSelection(selected)
   }
