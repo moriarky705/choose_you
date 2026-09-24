@@ -8,6 +8,38 @@ RSpec.describe RoomsController, type: :controller do
       get :new
       expect(response).to have_http_status(:success)
     end
+
+    context 'ビューの内容' do
+      render_views
+
+      it 'ルームコードで参加するフォームを含む' do
+        get :new
+        expect(response.body).to include("action=\"#{find_room_path}\"")
+        expect(response.body).to include('name="code"')
+      end
+    end
+  end
+
+  describe 'GET #find' do
+    let(:owner_name) { 'テストオーナー' }
+    let!(:room) { RoomRegistry.create_room(owner_name: owner_name).first }
+
+    it '有効なコード（大文字・前後の空白混じり）ならルームにリダイレクトする' do
+      get :find, params: { code: " #{room.id.upcase} " }
+      expect(response).to redirect_to(room_path(room.id))
+    end
+
+    it '存在しないコードならルートパスにリダイレクトする' do
+      get :find, params: { code: 'zzzzzz' }
+      expect(response).to redirect_to(root_path)
+      expect(flash[:alert]).to eq('ルームが見つかりません。コードを確認してください。')
+    end
+
+    it '不正な形式のコードならルートパスにリダイレクトする' do
+      get :find, params: { code: 'abc' }
+      expect(response).to redirect_to(root_path)
+      expect(flash[:alert]).to eq('ルームが見つかりません。コードを確認してください。')
+    end
   end
 
   describe 'POST #create' do
@@ -51,6 +83,37 @@ RSpec.describe RoomsController, type: :controller do
         }.to raise_error(ActionController::ParameterMissing)
       end
     end
+
+    context '名前が空白のみの場合' do
+      it 'ルームを作成せずルートパスにリダイレクトする' do
+        post :create, params: { owner_name: '   ' }
+
+        expect(response).to redirect_to(root_path)
+        expect(response.location).not_to match(%r{/rooms/})
+        expect(flash[:alert]).to eq('名前を入力してください')
+      end
+    end
+
+    context '名前が配列で渡された場合' do
+      it 'ルームを作成せずルートパスにリダイレクトする' do
+        post :create, params: { owner_name: ['a'] }
+
+        expect(response).to redirect_to(root_path)
+        expect(response.location).not_to match(%r{/rooms/})
+        expect(flash[:alert]).to eq('名前を入力してください')
+      end
+    end
+
+    context '名前が20文字を超える場合' do
+      it '20文字に切り詰めて保存する' do
+        long_name = 'あ' * 30
+
+        post :create, params: { owner_name: long_name }
+        room_id = response.location.match(%r{/rooms/([a-z0-9]{6})})[1]
+
+        expect(RoomRegistry.find_room(room_id).owner_name.length).to eq(20)
+      end
+    end
   end
 
   describe 'GET #show' do
@@ -88,6 +151,13 @@ RSpec.describe RoomsController, type: :controller do
         get :show, params: { id: room.id, count: '3' }
         expect(assigns(:last_count)).to eq(3)
       end
+
+      it 'ヘッダーにルームコード、QR切替、共有ボタンを含める' do
+        get :show, params: { id: room.id }
+        expect(response.body).to include(room.id)
+        expect(response.body).to include('room#toggleQr')
+        expect(response.body).to include('room#shareInvite')
+      end
     end
 
     context '参加者としてアクセスする場合' do
@@ -117,6 +187,12 @@ RSpec.describe RoomsController, type: :controller do
         get :show, params: { id: room.id }
         expect(response).to have_http_status(:success)
         expect(response).to render_template(:join_form)
+      end
+
+      it '参加フォームに既存参加者名のdata-name-form-taken-valueを含める' do
+        get :show, params: { id: room.id }
+        expect(response.body).to include('data-name-form-taken-value')
+        expect(response.body).to include(owner_name)
       end
     end
 
@@ -191,6 +267,17 @@ RSpec.describe RoomsController, type: :controller do
         expect {
           post :join, params: { id: room.id }
         }.to raise_error(ActionController::ParameterMissing)
+      end
+    end
+
+    context '名前が空白のみの場合' do
+      it '参加者を追加せずルームにリダイレクトする' do
+        expect {
+          post :join, params: { id: room.id, name: '   ' }
+        }.not_to change { RoomRegistry.participant_list(room.id).size }
+
+        expect(response).to redirect_to(room_path(room.id))
+        expect(flash[:alert]).to eq('名前を入力してください')
       end
     end
   end

@@ -6,8 +6,21 @@ class RoomsController < ApplicationController
   def new
   end
 
+  def find
+    code = params[:code].to_s.strip.downcase
+
+    if code.match?(/\A[a-z0-9]{6}\z/) && RoomRegistry.room_exists?(code)
+      redirect_to room_path(code)
+    else
+      redirect_to root_path, alert: 'ルームが見つかりません。コードを確認してください。'
+    end
+  end
+
   def create
-    owner_name = params.require(:owner_name)
+    require_param!(:owner_name)
+    owner_name = normalize_name(params[:owner_name])
+    return redirect_to root_path, alert: '名前を入力してください' if owner_name.blank?
+
     room, owner_token = RoomRegistry.create_room(owner_name:)
     set_secure_cookie(owner_cookie_key(room.id), owner_token)
     redirect_to room_path(room.id)
@@ -40,8 +53,11 @@ class RoomsController < ApplicationController
     Rails.logger.info "🚪 Join attempt: room_id=#{params[:id]}, already_joined=#{already_joined?}"
     
     return redirect_to_room_if_already_joined if already_joined?
-    
-    name = params.require(:name)
+
+    require_param!(:name)
+    name = normalize_name(params[:name])
+    return redirect_to room_path(params[:id]), alert: '名前を入力してください' if name.blank?
+
     participant = RoomRegistry.add_participant(room_id: params[:id], name:)
     
     Rails.logger.info "👤 Participant created: #{participant.present? ? 'success' : 'failed'}, room_exists=#{RoomRegistry.room_exists?(params[:id])}"
@@ -97,6 +113,16 @@ class RoomsController < ApplicationController
   end
 
   private
+
+  def require_param!(key)
+    raise ActionController::ParameterMissing.new(key) unless params.key?(key)
+  end
+
+  def normalize_name(raw)
+    return '' unless raw.is_a?(String)
+
+    raw.strip.gsub(/\s+/, ' ')[0, 20]
+  end
 
   def load_room
     @room = RoomRegistry.find_room(params[:id])

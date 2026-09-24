@@ -15,6 +15,8 @@ Rails.application.routes.draw do
   # Defines the root path route ("/")
   root "rooms#new"
 
+  get 'join', to: 'rooms#find', as: :find_room
+
   resources :rooms, only: [:new, :create, :show] do
     member do
       post :join

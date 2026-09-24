@@ -1,10 +1,11 @@
 import { Controller } from "@hotwired/stimulus"
+import QRCode from "qrcode"
 import consumer from "../channels/consumer"
 
 // Real-time updates for room management
 export default class extends Controller {
   static values = { roomId: String, owner: Boolean, selfId: String, ownerId: String }
-  static targets = ["participants", "selectionList", "countInput", "selectionHeader", "selectionCount", "inviteUrl", "copyFeedback", "copyButton", "selectionStatus", "selectionSubmit", "participantCount", "selectionEmpty", "selfResult", "roulette", "selectionForm", "selectionError", "eligibleHint", "historyList", "historyCard", "historyData"]
+  static targets = ["participants", "selectionList", "countInput", "selectionHeader", "selectionCount", "inviteUrl", "copyFeedback", "copyButton", "shareButton", "qrPanel", "qrCanvas", "selectionStatus", "selectionSubmit", "participantCount", "selectionEmpty", "selfResult", "roulette", "selectionForm", "selectionError", "eligibleHint", "historyList", "historyCard", "historyData"]
 
   // Connection and initialization
   connect() {
@@ -12,10 +13,12 @@ export default class extends Controller {
     this.drawInFlight = false
     this.pendingHistory = null
     this.revealPendingId = null
+    this.qrGenerated = false
     this.connectionConfig = new ConnectionConfig()
     this.initializeFromServerRenderedState()
     this.setupRealtimeConnection()
     this.animateSelectionResults()
+    this.setupShareButton()
   }
 
   disconnect() {
@@ -553,6 +556,58 @@ export default class extends Controller {
 
     const copyHandler = new CopyHandler(this)
     await copyHandler.copyText(this.inviteUrlTarget.textContent.trim())
+  }
+
+  // Share sheet
+  setupShareButton() {
+    if (this.hasShareButtonTarget && navigator.share) {
+      this.shareButtonTarget.classList.remove('hidden')
+    }
+  }
+
+  async shareInvite() {
+    if (!this.hasInviteUrlTarget || !navigator.share) return
+
+    const url = this.inviteUrlTarget.textContent.trim()
+
+    try {
+      await navigator.share({ title: 'Choose You', text: '抽選ルームに参加してください', url })
+    } catch (error) {
+      if (error.name === 'AbortError') return
+
+      console.log('Share failed:', error)
+      const copyHandler = new CopyHandler(this)
+      copyHandler.showFeedback('共有できませんでした', 2000, 'text-red-600')
+    }
+  }
+
+  // QR code
+  toggleQr(event) {
+    if (!this.hasQrPanelTarget) return
+
+    const isHidden = this.qrPanelTarget.classList.toggle('hidden')
+    event.currentTarget.setAttribute('aria-expanded', (!isHidden).toString())
+
+    if (!isHidden) this.generateQr()
+  }
+
+  async generateQr() {
+    if (this.qrGenerated || !this.hasQrCanvasTarget || !this.hasInviteUrlTarget) return
+
+    const url = this.inviteUrlTarget.textContent.trim()
+
+    try {
+      await QRCode.toCanvas(this.qrCanvasTarget, url, { width: 200, margin: 1 })
+      this.qrGenerated = true
+    } catch (error) {
+      console.log('QR code generation failed:', error)
+      if (this.hasQrPanelTarget) {
+        const message = document.createElement('p')
+        message.className = 'text-sm text-red-600'
+        message.textContent = 'QRコードを生成できませんでした'
+        this.qrPanelTarget.appendChild(message)
+      }
+    }
   }
 
   // Manual refresh

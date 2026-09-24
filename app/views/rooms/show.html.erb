@@ -1,3 +1,4 @@
+<% content_for :title, "Choose You - ルーム #{@room.id}" %>
 <div class="min-h-screen bg-gray-50">
   <div class="max-w-6xl mx-auto px-4 py-6" data-controller="room" data-room-room-id-value="<%= @room.id %>" data-room-owner-value="<%= @owner_view %>" data-room-self-id-value="<%= @self_id %>" data-room-owner-id-value="<%= @room.owner_id %>">
     <!-- Material Design Header Card -->
@@ -5,7 +6,7 @@
       <div class="bg-indigo-600 px-6 py-4">
         <div class="flex items-center justify-between">
           <div>
-            <h1 class="text-2xl font-medium text-white mb-1">ルーム</h1>
+            <h1 class="text-2xl font-medium text-white mb-1">ルーム <span class="font-mono tracking-widest"><%= @room.id %></span></h1>
             <p class="text-indigo-100 flex items-center gap-2">
               <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path>
@@ -35,19 +36,37 @@
         </h2>
         
         <div class="bg-gray-50 border border-gray-200 rounded p-4 mb-6">
-          <div class="flex items-center gap-3">
-            <code data-room-target="inviteUrl" class="flex-1 bg-white border border-gray-300 px-3 py-2 rounded text-sm text-gray-700 break-all"><%= room_url(@room.id) %></code>
-            <button type="button" data-action="click->room#copyInvite" data-room-target="copyButton" 
+          <div class="flex flex-wrap items-center gap-3">
+            <code data-room-target="inviteUrl" class="min-w-0 w-full sm:w-auto sm:flex-1 bg-white border border-gray-300 px-3 py-2 rounded text-sm text-gray-700 break-all"><%= room_url(@room.id) %></code>
+            <button type="button" data-action="click->room#copyInvite" data-room-target="copyButton"
                     class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded shadow-sm transition-colors duration-200 flex items-center">
               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
               </svg>
               コピー
             </button>
+            <button type="button" data-room-target="shareButton" data-action="click->room#shareInvite"
+                    class="hidden bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 px-4 py-2 rounded shadow-sm transition-colors duration-200 flex items-center">
+              <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path>
+              </svg>
+              共有
+            </button>
+            <button type="button" data-action="click->room#toggleQr" aria-expanded="false"
+                    class="bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 px-4 py-2 rounded shadow-sm transition-colors duration-200 flex items-center">
+              <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4h6v6H4V4zm0 10h6v6H4v-6zm10-10h6v6h-6V4zm2 12h2v2h-2v-2zm-2 2h2v2h-2v-2zm4 0h2v2h-2v-2zm0-4h2v2h-2v-2z"></path>
+              </svg>
+              QRコード
+            </button>
             <span data-room-target="copyFeedback" class="text-sm font-medium" style="display:none;"></span>
           </div>
+          <div data-room-target="qrPanel" class="hidden mt-4 flex flex-col items-center gap-2">
+            <canvas data-room-target="qrCanvas"></canvas>
+            <p class="text-xs text-gray-500">スマートフォンのカメラで読み取って参加できます</p>
+          </div>
         </div>
-        
+
         <h2 class="text-lg font-medium text-gray-900 mb-4 flex items-center">
           <svg class="w-5 h-5 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"></path>
