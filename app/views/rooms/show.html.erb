@@ -7,17 +7,21 @@
         <div class="flex items-center justify-between">
           <div>
             <h1 class="text-2xl font-medium text-white mb-1">ルーム <span class="font-mono tracking-widest"><%= @room.id %></span></h1>
-            <p class="text-indigo-100 flex items-center gap-2">
+            <div class="text-indigo-100 flex items-center gap-2">
               <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path>
               </svg>
               <span><%= @owner_view ? @room.owner_name : (@participant&.name || '不明') %></span>
-            </p>
+              <% unless @owner_view %>
+                <%= button_to '退出', leave_room_path(@room.id), method: :post, form: { class: 'inline', data: { action: 'submit->room#confirmLeave' } }, class: 'text-xs text-white/90 underline ml-3' %>
+              <% end %>
+            </div>
           </div>
           <div class="text-right">
-            <div class="inline-flex items-center bg-white/20 backdrop-blur-sm text-white px-3 py-1 rounded-full text-sm">
-              <div class="w-2 h-2 bg-green-400 rounded-full mr-2"></div>
+            <div class="inline-flex items-center bg-white/20 backdrop-blur-sm text-white px-3 py-1 rounded-full text-sm" title="接続中…">
+              <div data-room-target="connectionDot" class="w-2 h-2 bg-gray-300 rounded-full mr-2"></div>
               <%= @owner_view ? 'オーナー' : 'ゲスト' %>
+              <span data-room-target="connectionLabel" class="ml-1 text-xs text-white/80">接続中…</span>
             </div>
           </div>
         </div>
@@ -142,8 +146,8 @@
             参加者
             <span data-room-target="participantCount" class="bg-white/20 text-white px-2 py-1 rounded ml-2 text-sm"><%= @participants.size %></span>
           </h2>
-          <button type="button" data-action="click->room#refreshUpdates" 
-                  class="bg-white/20 hover:bg-white/30 text-white px-3 py-1 rounded transition-colors duration-200 flex items-center text-sm">
+          <button type="button" data-room-target="refreshButton" data-action="click->room#refreshUpdates"
+                  class="hidden bg-white/20 hover:bg-white/30 text-white px-3 py-1 rounded transition-colors duration-200 flex items-center text-sm">
             <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
             </svg>
@@ -162,6 +166,9 @@
               <span class="text-gray-900 font-medium"><%= p.name %></span>
               <% if is_self %>
                 <span class="ml-2 text-xs text-blue-600 font-medium">（あなた）</span>
+              <% end %>
+              <% if @owner_view && p.id.present? && p.id != @room.owner_id %>
+                <button type="button" class="ml-auto text-gray-400 hover:text-red-600 p-1" data-action="click->room#removeParticipant" data-participant-id="<%= p.id %>" data-participant-name="<%= p.name %>" aria-label="<%= p.name %>さんを削除">×</button>
               <% end %>
             </div>
           <% end %>

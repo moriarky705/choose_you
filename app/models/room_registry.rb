@@ -27,7 +27,7 @@ class RoomRegistry
     end
 
     # 委譲メソッド群を動的に定義
-    %i[create_room find_room add_participant participant_list draw_pool select_random room_exists? cleanup_expired_rooms].each do |method_name|
+    %i[create_room find_room add_participant participant_list draw_pool select_random room_exists? cleanup_expired_rooms remove_participant].each do |method_name|
       define_method(method_name) do |*args, **kwargs|
         service.public_send(method_name, *args, **kwargs)
       end
@@ -117,6 +117,17 @@ class InMemoryRoomService
     exists
   end
 
+  def remove_participant(room_id:, participant_id: nil, token: nil)
+    room = find_room(room_id)
+    return nil unless room
+
+    @mutex.synchronize do
+      removed = find_removable_participant(room, participant_id:, token:)
+      room.participants.delete(removed) if removed
+      removed
+    end
+  end
+
   def cleanup_expired_rooms
     @mutex.synchronize do
       expired_rooms = @rooms.select do |_, room|
@@ -133,6 +144,18 @@ class InMemoryRoomService
   end
 
   private
+
+  def find_removable_participant(room, participant_id:, token:)
+    if token.present?
+      return nil if ActiveSupport::SecurityUtils.secure_compare(token, room.owner_token)
+
+      room.participants.find { |p| ActiveSupport::SecurityUtils.secure_compare(token, p.token) }
+    elsif participant_id.present?
+      return nil if room.owner_id.present? && participant_id == room.owner_id
+
+      room.participants.find { |p| p.id.present? && p.id == participant_id }
+    end
+  end
 
   def generate_unique_room_id
     loop do

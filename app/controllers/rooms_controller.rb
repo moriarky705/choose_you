@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 class RoomsController < ApplicationController
-  before_action :load_room, only: %i[show join select updates]
+  before_action :load_room, only: %i[show join select updates leave remove_participant]
 
   def new
   end
@@ -98,7 +98,7 @@ class RoomsController < ApplicationController
       format.json do
         render json: {
           ok: true,
-          selection: { id: selection[:id], selected: selection[:selected], count: selection[:count] },
+          selection: { id: selection[:id], number: selection[:number], selected: selection[:selected], count: selection[:count] },
           history: ActionCableBroadcastService.compact_history(room.history)
         }
       end
@@ -108,8 +108,49 @@ class RoomsController < ApplicationController
 
   def updates
     return head :not_found unless @room
-    
+
     render json: room_updates_data
+  end
+
+  def leave
+    unless @room
+      return redirect_to root_path, alert: '部屋が見つかりません。部屋が削除されたか、セッションが期限切れの可能性があります。'
+    end
+
+    unless authorization_service.participant_access?
+      return redirect_to room_path(@room.id)
+    end
+
+    token = cookies.signed[participant_cookie_key(@room.id)]
+    RoomRegistry.remove_participant(room_id: @room.id, token: token)
+
+    cookies.delete(participant_cookie_key(@room.id))
+    ActionCableBroadcastService.broadcast_participants_update(@room.id)
+
+    redirect_to root_path, notice: 'ルームから退出しました'
+  end
+
+  def remove_participant
+    unless @room
+      return render json: { error: '部屋が見つかりません' }, status: :not_found
+    end
+
+    unless authorization_service.owner_access?
+      return render json: { error: '権限がありません' }, status: :forbidden
+    end
+
+    if @room.owner_id.present? && params[:participant_id] == @room.owner_id
+      return render json: { error: 'オーナーは削除できません' }, status: :unprocessable_entity
+    end
+
+    removed = RoomRegistry.remove_participant(room_id: @room.id, participant_id: params[:participant_id])
+
+    if removed.nil?
+      return render json: { error: '参加者が見つかりません' }, status: :not_found
+    end
+
+    ActionCableBroadcastService.broadcast_participants_update(@room.id)
+    render json: { ok: true }
   end
 
   private
@@ -158,9 +199,9 @@ class RoomsController < ApplicationController
 
   def redirect_to_room_if_already_joined
     existing_token = cookies.signed[participant_cookie_key(params[:id])]
-    return false unless existing_token
-    
-    existing_participant = RoomRegistry.participant_list(params[:id]).find { |p| p.token == existing_token }
+    return false if existing_token.blank?
+
+    existing_participant = RoomRegistry.participant_list(params[:id]).find { |p| ActiveSupport::SecurityUtils.secure_compare(existing_token, p.token) }
     if existing_participant
       redirect_to room_path(params[:id])
       return true
@@ -170,9 +211,9 @@ class RoomsController < ApplicationController
 
   def already_joined?
     existing_token = cookies.signed[participant_cookie_key(params[:id])]
-    return false unless existing_token
-    
-    RoomRegistry.participant_list(params[:id]).any? { |p| p.token == existing_token }
+    return false if existing_token.blank?
+
+    RoomRegistry.participant_list(params[:id]).any? { |p| ActiveSupport::SecurityUtils.secure_compare(existing_token, p.token) }
   end
 
   def store_participant_cookie(token)

@@ -153,11 +153,38 @@ class RedisRoomService
     # Redis の TTL で自動的に期限切れになるため、手動クリーンアップは不要
     0
   end
-  
+
+  def remove_participant(room_id:, participant_id: nil, token: nil)
+    room = find_room(room_id)
+    return nil unless room
+
+    removed = find_removable_participant(room, participant_id:, token:)
+    return nil unless removed
+
+    room.participants.delete(removed)
+    store_room_object(room)
+    removed
+  rescue Redis::BaseError => e
+    Rails.logger.error "❌ Redis error in remove_participant: #{e.message}"
+    nil
+  end
+
   private
-  
+
   def room_key(room_id)
     "#{ROOM_KEY_PREFIX}#{room_id}"
+  end
+
+  def find_removable_participant(room, participant_id:, token:)
+    if token.present?
+      return nil if ActiveSupport::SecurityUtils.secure_compare(token, room.owner_token)
+
+      room.participants.find { |p| ActiveSupport::SecurityUtils.secure_compare(token, p.token) }
+    elsif participant_id.present?
+      return nil if room.owner_id.present? && participant_id == room.owner_id
+
+      room.participants.find { |p| p.id.present? && p.id == participant_id }
+    end
   end
 
   def build_draw_pool(room, include_owner:, exclude_winners:)

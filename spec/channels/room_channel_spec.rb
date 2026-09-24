@@ -53,6 +53,7 @@ RSpec.describe RoomChannel, type: :channel do
 
         selection_message = transmissions.find { |t| t['type'] == 'selection' }
         expect(selection_message['id']).to be_present
+        expect(selection_message['number']).to eq(1)
         expect(selection_message).not_to have_key('animate')
       end
 

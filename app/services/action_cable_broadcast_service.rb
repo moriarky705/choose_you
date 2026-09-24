@@ -34,6 +34,7 @@ class ActionCableBroadcastService
     broadcast_message(
       type: 'selection',
       id: selection[:id],
+      number: selection[:number],
       selected: selection[:selected],
       count: selection[:count],
       animate: true,

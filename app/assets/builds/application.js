@@ -11131,7 +11131,7 @@
   // app/javascript/controllers/room_controller.js
   var room_controller_default = class extends Controller {
     static values = { roomId: String, owner: Boolean, selfId: String, ownerId: String };
-    static targets = ["participants", "selectionList", "countInput", "selectionHeader", "selectionCount", "inviteUrl", "copyFeedback", "copyButton", "shareButton", "qrPanel", "qrCanvas", "selectionStatus", "selectionSubmit", "participantCount", "selectionEmpty", "selfResult", "roulette", "selectionForm", "selectionError", "eligibleHint", "historyList", "historyCard", "historyData"];
+    static targets = ["participants", "selectionList", "countInput", "selectionHeader", "selectionCount", "inviteUrl", "copyFeedback", "copyButton", "shareButton", "qrPanel", "qrCanvas", "selectionStatus", "selectionSubmit", "participantCount", "selectionEmpty", "selfResult", "roulette", "selectionForm", "selectionError", "eligibleHint", "historyList", "historyCard", "historyData", "connectionDot", "connectionLabel", "refreshButton"];
     // Connection and initialization
     connect() {
       console.log("Room controller connecting...", this.roomIdValue);
@@ -11139,7 +11139,9 @@
       this.pendingHistory = null;
       this.revealPendingId = null;
       this.qrGenerated = false;
+      this.selfRemoved = false;
       this.connectionConfig = new ConnectionConfig();
+      this.setConnectionState("connecting");
       this.initializeFromServerRenderedState();
       this.setupRealtimeConnection();
       this.animateSelectionResults();
@@ -11151,7 +11153,9 @@
     initializeFromServerRenderedState() {
       this.currentParticipants = this.hasParticipantsTarget ? Array.from(this.participantsTarget.querySelectorAll("[data-participant-name]")).map((el) => ({ id: el.dataset.participantId || "", name: el.dataset.participantName })) : [];
       this.shownSelectionId = this.hasSelectionListTarget && this.selectionListTarget.dataset.selectionId || "";
-      this.renderHistory(this.readServerHistory());
+      const history2 = this.readServerHistory();
+      this.latestNumber = history2[0] && typeof history2[0].number === "number" ? history2[0].number : 0;
+      this.renderHistory(history2);
     }
     readServerHistory() {
       if (!this.hasHistoryDataTarget) return [];
@@ -11180,15 +11184,44 @@
     }
     handleConnectionSuccess() {
       console.log("\u2705 ActionCable connected for room:", this.roomIdValue);
+      this.setConnectionState("connected");
       this.stopPolling();
     }
     handleConnectionLost() {
       console.log("\u274C ActionCable disconnected for room:", this.roomIdValue);
+      this.setConnectionState("disconnected");
       this.startPolling();
     }
     handleConnectionRejected() {
       console.log("\u{1F6AB} ActionCable connection rejected for room:", this.roomIdValue);
+      this.setConnectionState("disconnected");
       this.startPolling();
+    }
+    // Live connection status badge (dot + label + title) and manual-refresh visibility
+    setConnectionState(state) {
+      const dotClass = {
+        connecting: "bg-gray-300",
+        connected: "bg-green-400",
+        disconnected: "bg-amber-400"
+      }[state] || "bg-gray-300";
+      const label = {
+        connecting: "\u63A5\u7D9A\u4E2D\u2026",
+        connected: "\u30AA\u30F3\u30E9\u30A4\u30F3",
+        disconnected: "\u518D\u63A5\u7D9A\u4E2D\u2026"
+      }[state] || "\u63A5\u7D9A\u4E2D\u2026";
+      if (this.hasConnectionDotTarget) {
+        this.connectionDotTarget.classList.remove("bg-gray-300", "bg-green-400", "bg-amber-400");
+        this.connectionDotTarget.classList.add(dotClass);
+        if (this.connectionDotTarget.parentElement) {
+          this.connectionDotTarget.parentElement.title = label;
+        }
+      }
+      if (this.hasConnectionLabelTarget) {
+        this.connectionLabelTarget.textContent = label;
+      }
+      if (this.hasRefreshButtonTarget) {
+        this.refreshButtonTarget.classList.toggle("hidden", state !== "disconnected");
+      }
     }
     handleMessage(data) {
       console.log("\u{1F4E1} ActionCable received:", data);
@@ -11233,8 +11266,13 @@
     renderParticipants(list) {
       this.currentParticipants = list;
       if (!this.hasParticipantsTarget) return;
+      if (!this.selfRemoved && !this.ownerValue && this.selfIdValue && !list.some((p) => p.id === this.selfIdValue)) {
+        this.selfRemoved = true;
+        window.location.reload();
+        return;
+      }
       console.log("\u{1F3A8} Rendering participants:", list.length, "participants");
-      const renderer = new ParticipantRenderer(this.selfIdValue);
+      const renderer = new ParticipantRenderer(this.selfIdValue, this.ownerValue, this.ownerIdValue);
       this.participantsTarget.innerHTML = renderer.render(list);
       if (this.hasParticipantCountTarget) {
         this.participantCountTarget.textContent = list.length;
@@ -11322,6 +11360,13 @@
     // revealSelection で結果を表示した後に描画する
     receiveSelectionUpdate(selectionData, history2) {
       const id = selectionData && selectionData.id;
+      const number = selectionData && typeof selectionData.number === "number" ? selectionData.number : null;
+      if (number !== null && number < this.latestNumber) {
+        return;
+      }
+      if (number !== null) {
+        this.latestNumber = Math.max(this.latestNumber, number);
+      }
       if (id && id === this.revealPendingId) {
         this.pendingHistory = history2 || null;
         return;
@@ -11610,6 +11655,39 @@
       console.log("\u{1F504} Manual refresh requested");
       this.fetchUpdates();
     }
+    // Leave room (participants only)
+    confirmLeave(event) {
+      if (!window.confirm("\u3053\u306E\u30EB\u30FC\u30E0\u304B\u3089\u9000\u51FA\u3057\u307E\u3059\u304B\uFF1F")) event.preventDefault();
+    }
+    // Remove participant (owner only)
+    async removeParticipant(event) {
+      const { participantId, participantName } = event.currentTarget.dataset;
+      if (!window.confirm(`\u300C${participantName}\u300D\u3055\u3093\u3092\u30EB\u30FC\u30E0\u304B\u3089\u524A\u9664\u3057\u307E\u3059\u304B\uFF1F`)) return;
+      const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+      const path = `/rooms/${encodeURIComponent(this.roomIdValue)}/participants/${encodeURIComponent(participantId)}`;
+      try {
+        const response = await fetch(path, {
+          method: "DELETE",
+          headers: {
+            "Accept": "application/json",
+            "X-CSRF-Token": csrfToken
+          }
+        });
+        if (!response.ok) {
+          let message = "\u524A\u9664\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F";
+          try {
+            const data = await response.json();
+            if (data.error) message = data.error;
+          } catch (parseError) {
+            console.log("Failed to parse remove participant error response:", parseError);
+          }
+          window.alert(message);
+        }
+      } catch (error2) {
+        console.log("Remove participant request failed:", error2);
+        window.alert("\u524A\u9664\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F");
+      }
+    }
     // Cleanup
     cleanup() {
       if (this.subscription) consumer_default.subscriptions.remove(this.subscription);
@@ -11649,6 +11727,7 @@
       if (data.selection) {
         this.handleSelectionUpdate({
           id: data.selection.id,
+          number: data.selection.number,
           selected: data.selection.selected,
           count: data.selection.count,
           animate: false,
@@ -11668,7 +11747,7 @@
     handleSelectionUpdate(data) {
       if (data.selected) {
         this.controller.receiveSelectionUpdate(
-          { id: data.id, selected: data.selected, count: data.count, animate: data.animate },
+          { id: data.id, number: data.number, selected: data.selected, count: data.count, animate: data.animate },
           data.history
         );
         if (this.controller.hasParticipantsTarget && this.controller.participantsTarget.children.length === 0) {
@@ -11681,20 +11760,24 @@
     }
   };
   var ParticipantRenderer = class {
-    constructor(selfId) {
+    constructor(selfId, isOwner, ownerId) {
       this.selfId = selfId;
+      this.isOwner = isOwner;
+      this.ownerId = ownerId;
     }
     render(participants) {
       return participants.map((p, index) => {
         const isSelf = Boolean(this.selfId) && p.id === this.selfId;
         const safeName = this.escapeHtml(p.name);
         const safeId = this.escapeHtml(p.id || "");
+        const canRemove = this.isOwner && p.id && p.id !== this.ownerId;
         return `<div class="flex items-center p-3 ${isSelf ? "bg-blue-50 hover:bg-blue-100" : "bg-gray-50 hover:bg-gray-100"} rounded-lg transition-colors" data-participant-id="${safeId}" data-participant-name="${safeName}">
         <div class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-medium mr-3">
           ${index + 1}
         </div>
         <span class="text-gray-900 font-medium">${safeName}</span>
         ${isSelf ? '<span class="ml-2 text-xs text-blue-600 font-medium">\uFF08\u3042\u306A\u305F\uFF09</span>' : ""}
+        ${canRemove ? `<button type="button" class="ml-auto text-gray-400 hover:text-red-600 p-1" data-action="click->room#removeParticipant" data-participant-id="${safeId}" data-participant-name="${safeName}" aria-label="${safeName}\u3055\u3093\u3092\u524A\u9664">\xD7</button>` : ""}
       </div>`;
       }).join("");
     }

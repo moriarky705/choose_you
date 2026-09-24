@@ -5,7 +5,7 @@ import consumer from "../channels/consumer"
 // Real-time updates for room management
 export default class extends Controller {
   static values = { roomId: String, owner: Boolean, selfId: String, ownerId: String }
-  static targets = ["participants", "selectionList", "countInput", "selectionHeader", "selectionCount", "inviteUrl", "copyFeedback", "copyButton", "shareButton", "qrPanel", "qrCanvas", "selectionStatus", "selectionSubmit", "participantCount", "selectionEmpty", "selfResult", "roulette", "selectionForm", "selectionError", "eligibleHint", "historyList", "historyCard", "historyData"]
+  static targets = ["participants", "selectionList", "countInput", "selectionHeader", "selectionCount", "inviteUrl", "copyFeedback", "copyButton", "shareButton", "qrPanel", "qrCanvas", "selectionStatus", "selectionSubmit", "participantCount", "selectionEmpty", "selfResult", "roulette", "selectionForm", "selectionError", "eligibleHint", "historyList", "historyCard", "historyData", "connectionDot", "connectionLabel", "refreshButton"]
 
   // Connection and initialization
   connect() {
@@ -14,7 +14,9 @@ export default class extends Controller {
     this.pendingHistory = null
     this.revealPendingId = null
     this.qrGenerated = false
+    this.selfRemoved = false
     this.connectionConfig = new ConnectionConfig()
+    this.setConnectionState('connecting')
     this.initializeFromServerRenderedState()
     this.setupRealtimeConnection()
     this.animateSelectionResults()
@@ -32,7 +34,9 @@ export default class extends Controller {
 
     this.shownSelectionId = (this.hasSelectionListTarget && this.selectionListTarget.dataset.selectionId) || ''
 
-    this.renderHistory(this.readServerHistory())
+    const history = this.readServerHistory()
+    this.latestNumber = (history[0] && typeof history[0].number === 'number') ? history[0].number : 0
+    this.renderHistory(history)
   }
 
   readServerHistory() {
@@ -66,17 +70,52 @@ export default class extends Controller {
 
   handleConnectionSuccess() {
     console.log('✅ ActionCable connected for room:', this.roomIdValue)
+    this.setConnectionState('connected')
     this.stopPolling()
   }
 
   handleConnectionLost() {
     console.log('❌ ActionCable disconnected for room:', this.roomIdValue)
+    this.setConnectionState('disconnected')
     this.startPolling()
   }
 
   handleConnectionRejected() {
     console.log('🚫 ActionCable connection rejected for room:', this.roomIdValue)
+    this.setConnectionState('disconnected')
     this.startPolling()
+  }
+
+  // Live connection status badge (dot + label + title) and manual-refresh visibility
+  setConnectionState(state) {
+    const dotClass = {
+      connecting: 'bg-gray-300',
+      connected: 'bg-green-400',
+      disconnected: 'bg-amber-400'
+    }[state] || 'bg-gray-300'
+
+    const label = {
+      connecting: '接続中…',
+      connected: 'オンライン',
+      disconnected: '再接続中…'
+    }[state] || '接続中…'
+
+    if (this.hasConnectionDotTarget) {
+      this.connectionDotTarget.classList.remove('bg-gray-300', 'bg-green-400', 'bg-amber-400')
+      this.connectionDotTarget.classList.add(dotClass)
+
+      if (this.connectionDotTarget.parentElement) {
+        this.connectionDotTarget.parentElement.title = label
+      }
+    }
+
+    if (this.hasConnectionLabelTarget) {
+      this.connectionLabelTarget.textContent = label
+    }
+
+    if (this.hasRefreshButtonTarget) {
+      this.refreshButtonTarget.classList.toggle('hidden', state !== 'disconnected')
+    }
   }
 
   handleMessage(data) {
@@ -132,8 +171,14 @@ export default class extends Controller {
 
     if (!this.hasParticipantsTarget) return
 
+    if (!this.selfRemoved && !this.ownerValue && this.selfIdValue && !list.some((p) => p.id === this.selfIdValue)) {
+      this.selfRemoved = true
+      window.location.reload()
+      return
+    }
+
     console.log('🎨 Rendering participants:', list.length, 'participants')
-    const renderer = new ParticipantRenderer(this.selfIdValue)
+    const renderer = new ParticipantRenderer(this.selfIdValue, this.ownerValue, this.ownerIdValue)
     this.participantsTarget.innerHTML = renderer.render(list)
 
     if (this.hasParticipantCountTarget) {
@@ -253,6 +298,16 @@ export default class extends Controller {
   // revealSelection で結果を表示した後に描画する
   receiveSelectionUpdate(selectionData, history) {
     const id = selectionData && selectionData.id
+    const number = selectionData && typeof selectionData.number === 'number' ? selectionData.number : null
+
+    if (number !== null && number < this.latestNumber) {
+      // 複数オーナータブ等の競合で届いた、より古い抽選結果は履歴ごと無視する
+      return
+    }
+
+    if (number !== null) {
+      this.latestNumber = Math.max(this.latestNumber, number)
+    }
 
     if (id && id === this.revealPendingId) {
       // 同じ抽選のリベール（ルーレット演出～結果表示）がまだ進行中
@@ -616,6 +671,44 @@ export default class extends Controller {
     this.fetchUpdates()
   }
 
+  // Leave room (participants only)
+  confirmLeave(event) {
+    if (!window.confirm('このルームから退出しますか？')) event.preventDefault()
+  }
+
+  // Remove participant (owner only)
+  async removeParticipant(event) {
+    const { participantId, participantName } = event.currentTarget.dataset
+    if (!window.confirm(`「${participantName}」さんをルームから削除しますか？`)) return
+
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content
+    const path = `/rooms/${encodeURIComponent(this.roomIdValue)}/participants/${encodeURIComponent(participantId)}`
+
+    try {
+      const response = await fetch(path, {
+        method: 'DELETE',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-Token': csrfToken
+        }
+      })
+
+      if (!response.ok) {
+        let message = '削除できませんでした'
+        try {
+          const data = await response.json()
+          if (data.error) message = data.error
+        } catch (parseError) {
+          console.log('Failed to parse remove participant error response:', parseError)
+        }
+        window.alert(message)
+      }
+    } catch (error) {
+      console.log('Remove participant request failed:', error)
+      window.alert('削除できませんでした')
+    }
+  }
+
   // Cleanup
   cleanup() {
     if (this.subscription) consumer.subscriptions.remove(this.subscription)
@@ -662,6 +755,7 @@ class MessageHandler {
     if (data.selection) {
       this.handleSelectionUpdate({
         id: data.selection.id,
+        number: data.selection.number,
         selected: data.selection.selected,
         count: data.selection.count,
         animate: false,
@@ -684,7 +778,7 @@ class MessageHandler {
   handleSelectionUpdate(data) {
     if (data.selected) {
       this.controller.receiveSelectionUpdate(
-        { id: data.id, selected: data.selected, count: data.count, animate: data.animate },
+        { id: data.id, number: data.number, selected: data.selected, count: data.count, animate: data.animate },
         data.history
       )
 
@@ -703,8 +797,10 @@ class MessageHandler {
 
 // Participant list rendering
 class ParticipantRenderer {
-  constructor(selfId) {
+  constructor(selfId, isOwner, ownerId) {
     this.selfId = selfId
+    this.isOwner = isOwner
+    this.ownerId = ownerId
   }
 
   render(participants) {
@@ -712,6 +808,7 @@ class ParticipantRenderer {
       const isSelf = Boolean(this.selfId) && p.id === this.selfId
       const safeName = this.escapeHtml(p.name)
       const safeId = this.escapeHtml(p.id || '')
+      const canRemove = this.isOwner && p.id && p.id !== this.ownerId
 
       return `<div class="flex items-center p-3 ${isSelf ? 'bg-blue-50 hover:bg-blue-100' : 'bg-gray-50 hover:bg-gray-100'} rounded-lg transition-colors" data-participant-id="${safeId}" data-participant-name="${safeName}">
         <div class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-medium mr-3">
@@ -719,6 +816,7 @@ class ParticipantRenderer {
         </div>
         <span class="text-gray-900 font-medium">${safeName}</span>
         ${isSelf ? '<span class="ml-2 text-xs text-blue-600 font-medium">（あなた）</span>' : ''}
+        ${canRemove ? `<button type="button" class="ml-auto text-gray-400 hover:text-red-600 p-1" data-action="click->room#removeParticipant" data-participant-id="${safeId}" data-participant-name="${safeName}" aria-label="${safeName}さんを削除">×</button>` : ''}
       </div>`
     }).join('')
   }

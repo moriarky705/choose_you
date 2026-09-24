@@ -335,6 +335,7 @@ RSpec.describe RoomsController, type: :controller do
         json = JSON.parse(response.body)
         expect(json['ok']).to be true
         expect(json['selection']['id']).to be_present
+        expect(json['selection']['number']).to eq(1)
         expect(json['selection']['count']).to eq(1)
         expect(json['selection']['selected']).to all(include('id', 'name'))
       end
@@ -430,6 +431,7 @@ RSpec.describe RoomsController, type: :controller do
       expect(json['participants']).to all(include('id', 'name'))
       expect(json['selection']).to be_present
       expect(json['selection']['id']).to be_present
+      expect(json['selection']['number']).to eq(1)
       expect(json['selection']['count']).to eq(1)
       expect(json['history']).to be_present
       expect(json['history'].first).to include('id', 'number', 'selected')
@@ -447,6 +449,129 @@ RSpec.describe RoomsController, type: :controller do
       it '404エラーを返す' do
         get :updates, params: { id: 'nonexistent' }, format: :json
         expect(response).to have_http_status(:not_found)
+      end
+    end
+  end
+
+  describe 'DELETE #remove_participant' do
+    let(:owner_name) { 'テストオーナー' }
+    let!(:room) { RoomRegistry.create_room(owner_name: owner_name).first }
+    let!(:participant) { RoomRegistry.add_participant(room_id: room.id, name: '参加者') }
+
+    context 'オーナーとして削除する場合' do
+      before do
+        cookies.signed["owner_token_#{room.id}"] = room.owner_token
+      end
+
+      it '参加者を削除してokを返し、参加者更新をブロードキャストする' do
+        expect {
+          delete :remove_participant, params: { id: room.id, participant_id: participant.id }, format: :json
+        }.to have_broadcasted_to("room_#{room.id}")
+
+        expect(response).to have_http_status(:success)
+        expect(JSON.parse(response.body)).to eq({ 'ok' => true })
+        expect(RoomRegistry.participant_list(room.id).map(&:id)).not_to include(participant.id)
+      end
+
+      it 'オーナー自身のidを指定した場合422を返し削除しない' do
+        delete :remove_participant, params: { id: room.id, participant_id: room.owner_id }, format: :json
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(JSON.parse(response.body)['error']).to eq('オーナーは削除できません')
+      end
+
+      it '存在しない参加者idの場合404を返す' do
+        delete :remove_participant, params: { id: room.id, participant_id: 'nonexistent' }, format: :json
+
+        expect(response).to have_http_status(:not_found)
+        expect(JSON.parse(response.body)['error']).to eq('参加者が見つかりません')
+      end
+    end
+
+    context 'オーナーでない場合' do
+      before do
+        cookies.signed["participant_token_#{room.id}"] = participant.token
+      end
+
+      it '403とエラーメッセージを返す' do
+        delete :remove_participant, params: { id: room.id, participant_id: participant.id }, format: :json
+
+        expect(response).to have_http_status(:forbidden)
+        expect(JSON.parse(response.body)['error']).to eq('権限がありません')
+      end
+    end
+
+    context '存在しないルームの場合' do
+      before do
+        cookies.signed["owner_token_#{room.id}"] = room.owner_token
+      end
+
+      it '404とエラーメッセージを返す' do
+        delete :remove_participant, params: { id: 'nonexistent', participant_id: participant.id }, format: :json
+
+        expect(response).to have_http_status(:not_found)
+        expect(JSON.parse(response.body)['error']).to eq('部屋が見つかりません')
+      end
+    end
+  end
+
+  describe 'POST #leave' do
+    let(:owner_name) { 'テストオーナー' }
+    let!(:room) { RoomRegistry.create_room(owner_name: owner_name).first }
+    let!(:participant) { RoomRegistry.add_participant(room_id: room.id, name: '参加者') }
+
+    context '参加者として退出する場合' do
+      before do
+        cookies.signed["participant_token_#{room.id}"] = participant.token
+      end
+
+      it '参加者を削除し、参加者クッキーを削除して、通知付きでルートにリダイレクトする' do
+        expect {
+          post :leave, params: { id: room.id }
+        }.to have_broadcasted_to("room_#{room.id}")
+
+        expect(response).to redirect_to(root_path)
+        expect(flash[:notice]).to eq('ルームから退出しました')
+        expect(RoomRegistry.participant_list(room.id).map(&:id)).not_to include(participant.id)
+        expect(cookies.signed["participant_token_#{room.id}"]).to be_nil
+      end
+
+      it '退出後にGET showで参加フォームが表示される' do
+        post :leave, params: { id: room.id }
+
+        get :show, params: { id: room.id }
+        expect(response).to render_template(:join_form)
+      end
+    end
+
+    context '参加者idがnilのレガシールームの場合' do
+      before do
+        participant.id = nil
+        cookies.signed["participant_token_#{room.id}"] = participant.token
+      end
+
+      it 'tokenで参加者を特定して削除する' do
+        expect {
+          post :leave, params: { id: room.id }
+        }.to change { room.participants.size }.from(1).to(0)
+
+        expect(response).to redirect_to(root_path)
+      end
+    end
+
+    context '参加者クッキーがない場合' do
+      it 'ルームにリダイレクトする' do
+        post :leave, params: { id: room.id }
+        expect(response).to redirect_to(room_path(room.id))
+      end
+    end
+
+    context '存在しないルームの場合' do
+      it 'ルートパスにリダイレクトする' do
+        post :leave, params: { id: 'nonexistent' }
+
+        expect(response).to redirect_to(root_path)
+        expect(flash[:alert]).to eq('部屋が見つかりません。部屋が削除されたか、セッションが期限切れの可能性があります。')
       end
     end
   end

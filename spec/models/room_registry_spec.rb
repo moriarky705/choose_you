@@ -241,6 +241,64 @@ RSpec.describe RoomRegistry, type: :model do
     end
   end
 
+  describe '#remove_participant' do
+    let(:owner_name) { 'テストオーナー' }
+    let!(:room) { registry.create_room(owner_name: owner_name).first }
+    let!(:participant1) { registry.add_participant(room_id: room.id, name: '参加者1') }
+    let!(:participant2) { registry.add_participant(room_id: room.id, name: '参加者2') }
+
+    it '公開idで参加者を削除して削除された参加者を返す' do
+      expect {
+        removed = registry.remove_participant(room_id: room.id, participant_id: participant1.id)
+        expect(removed).to eq(participant1)
+      }.to change { room.participants.size }.from(2).to(1)
+
+      expect(room.participants).to eq([participant2])
+    end
+
+    it '存在しない参加者idの場合nilを返し何も変更しない' do
+      expect {
+        removed = registry.remove_participant(room_id: room.id, participant_id: 'nonexistent')
+        expect(removed).to be_nil
+      }.not_to change { room.participants.size }
+    end
+
+    it 'オーナーのidを指定した場合nilを返し削除しない' do
+      removed = registry.remove_participant(room_id: room.id, participant_id: room.owner_id)
+      expect(removed).to be_nil
+      expect(room.participants.size).to eq(2)
+    end
+
+    it '存在しないルームの場合nilを返す' do
+      removed = registry.remove_participant(room_id: 'nonexistent', participant_id: participant1.id)
+      expect(removed).to be_nil
+    end
+
+    it '過去の抽選履歴は変更しない' do
+      registry.select_random(room_id: room.id, count: 1)
+      history_before = room.history
+
+      registry.remove_participant(room_id: room.id, participant_id: participant1.id)
+
+      expect(room.history).to eq(history_before)
+    end
+
+    it 'idがnilのレガシー参加者でもtokenを指定すれば削除でき、他の参加者は削除しない' do
+      participant1.id = nil
+
+      removed = registry.remove_participant(room_id: room.id, token: participant1.token)
+
+      expect(removed).to eq(participant1)
+      expect(room.participants).to eq([participant2])
+    end
+
+    it 'idもtokenも指定しない場合nilを返す' do
+      removed = registry.remove_participant(room_id: room.id, participant_id: nil, token: nil)
+      expect(removed).to be_nil
+      expect(room.participants.size).to eq(2)
+    end
+  end
+
   describe 'クラスメソッド' do
     it 'クラスメソッドがインスタンスメソッドに委譲される' do
       owner_name = 'テストオーナー'
