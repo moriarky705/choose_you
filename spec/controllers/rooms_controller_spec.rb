@@ -1,17 +1,64 @@
 require 'rails_helper'
 
 RSpec.describe RoomsController, type: :controller do
-  let(:room_registry) { RoomRegistry.instance }
-  
-  before do
-    # テスト前にレジストリをクリア
-    room_registry.instance_variable_set(:@rooms, {})
-  end
+  include ActionCable::TestHelper
 
   describe 'GET #new' do
     it 'ルーム作成画面を表示する' do
       get :new
       expect(response).to have_http_status(:success)
+    end
+
+    context 'ビューの内容' do
+      render_views
+
+      it 'ルームコードで参加するフォームを含む' do
+        get :new
+        expect(response.body).to include("action=\"#{find_room_path}\"")
+        expect(response.body).to include('name="code"')
+      end
+
+      it 'ページタイトルを設定する' do
+        get :new
+        expect(response.body).to include('<title>Choose You - 抽選ルームを作成</title>')
+      end
+
+      it '通知フラッシュを自動で消える閉じられるメッセージとして表示する' do
+        get :new, flash: { notice: 'ルームから退出しました' }
+        expect(response.body).to include('data-controller="flash"')
+        expect(response.body).to include('data-flash-auto-dismiss-value="true"')
+        expect(response.body).to include('role="status"')
+        expect(response.body).to include('閉じる')
+      end
+
+      it '警告フラッシュを自動で消えないメッセージとして表示する' do
+        get :new, flash: { alert: 'エラーが発生しました' }
+        expect(response.body).to include('data-controller="flash"')
+        expect(response.body).to include('data-flash-auto-dismiss-value="false"')
+        expect(response.body).to include('role="alert"')
+      end
+    end
+  end
+
+  describe 'GET #find' do
+    let(:owner_name) { 'テストオーナー' }
+    let!(:room) { RoomRegistry.create_room(owner_name: owner_name).first }
+
+    it '有効なコード（大文字・前後の空白混じり）ならルームにリダイレクトする' do
+      get :find, params: { code: " #{room.id.upcase} " }
+      expect(response).to redirect_to(room_path(room.id))
+    end
+
+    it '存在しないコードならルートパスにリダイレクトする' do
+      get :find, params: { code: 'zzzzzz' }
+      expect(response).to redirect_to(root_path)
+      expect(flash[:alert]).to eq('ルームが見つかりません。コードを確認してください。')
+    end
+
+    it '不正な形式のコードならルートパスにリダイレクトする' do
+      get :find, params: { code: 'abc' }
+      expect(response).to redirect_to(root_path)
+      expect(flash[:alert]).to eq('ルームが見つかりません。コードを確認してください。')
     end
   end
 
@@ -19,17 +66,34 @@ RSpec.describe RoomsController, type: :controller do
     let(:owner_name) { 'テストオーナー' }
 
     it 'ルームを作成してリダイレクトする' do
-      expect {
-        post :create, params: { owner_name: owner_name }
-      }.to change { room_registry.instance_variable_get(:@rooms).size }.from(0).to(1)
+      post :create, params: { owner_name: owner_name }
 
       expect(response).to have_http_status(:redirect)
       expect(response.location).to match(%r{/rooms/[a-z0-9]{6}})
+
+      room_id = response.location.match(%r{/rooms/([a-z0-9]{6})})[1]
+      expect(RoomRegistry.room_exists?(room_id)).to be true
     end
 
     it 'オーナートークンをクッキーに保存する' do
       post :create, params: { owner_name: owner_name }
-      expect(cookies.signed[:owner_token]).to be_present
+      room_id = response.location.match(%r{/rooms/([a-z0-9]{6})})[1]
+      expect(cookies.signed["owner_token_#{room_id}"]).to be_present
+    end
+
+    it 'リダイレクト先のURLにowner_tokenを含めない' do
+      post :create, params: { owner_name: owner_name }
+      expect(response.location).not_to include('owner_token')
+    end
+
+    it '複数のルームを作成してもそれぞれのオーナー権限を保持する' do
+      post :create, params: { owner_name: owner_name }
+      first_room_id = response.location.match(%r{/rooms/([a-z0-9]{6})})[1]
+
+      post :create, params: { owner_name: owner_name }
+
+      get :show, params: { id: first_room_id }
+      expect(assigns(:owner_view)).to be true
     end
 
     context 'パラメータが不正な場合' do
@@ -39,9 +103,42 @@ RSpec.describe RoomsController, type: :controller do
         }.to raise_error(ActionController::ParameterMissing)
       end
     end
+
+    context '名前が空白のみの場合' do
+      it 'ルームを作成せずルートパスにリダイレクトする' do
+        post :create, params: { owner_name: '   ' }
+
+        expect(response).to redirect_to(root_path)
+        expect(response.location).not_to match(%r{/rooms/})
+        expect(flash[:alert]).to eq('名前を入力してください')
+      end
+    end
+
+    context '名前が配列で渡された場合' do
+      it 'ルームを作成せずルートパスにリダイレクトする' do
+        post :create, params: { owner_name: ['a'] }
+
+        expect(response).to redirect_to(root_path)
+        expect(response.location).not_to match(%r{/rooms/})
+        expect(flash[:alert]).to eq('名前を入力してください')
+      end
+    end
+
+    context '名前が20文字を超える場合' do
+      it '20文字に切り詰めて保存する' do
+        long_name = 'あ' * 30
+
+        post :create, params: { owner_name: long_name }
+        room_id = response.location.match(%r{/rooms/([a-z0-9]{6})})[1]
+
+        expect(RoomRegistry.find_room(room_id).owner_name.length).to eq(20)
+      end
+    end
   end
 
   describe 'GET #show' do
+    render_views
+
     let(:owner_name) { 'テストオーナー' }
     let!(:room) { RoomRegistry.create_room(owner_name: owner_name).first }
 
@@ -49,13 +146,13 @@ RSpec.describe RoomsController, type: :controller do
       it 'ルートパスにリダイレクトする' do
         get :show, params: { id: 'nonexistent' }
         expect(response).to redirect_to(root_path)
-        expect(flash[:alert]).to eq('部屋が存在しません')
+        expect(flash[:alert]).to eq('部屋が見つかりません。部屋が削除されたか、セッションが期限切れの可能性があります。')
       end
     end
 
     context 'オーナーとしてアクセスする場合' do
       before do
-        cookies.signed[:owner_token] = room.owner_token
+        cookies.signed["owner_token_#{room.id}"] = room.owner_token
       end
 
       it 'ルーム画面を表示する' do
@@ -65,9 +162,21 @@ RSpec.describe RoomsController, type: :controller do
         expect(assigns(:participants)).to be_present
       end
 
+      it 'オーナーIDをdata-room-self-id-valueに含める' do
+        get :show, params: { id: room.id }
+        expect(response.body).to include("data-room-self-id-value=\"#{room.owner_id}\"")
+      end
+
       it '抽選人数パラメータを保持する' do
         get :show, params: { id: room.id, count: '3' }
         expect(assigns(:last_count)).to eq(3)
+      end
+
+      it 'ヘッダーにルームコード、QR切替、共有ボタンを含める' do
+        get :show, params: { id: room.id }
+        expect(response.body).to include(room.id)
+        expect(response.body).to include('room#toggleQr')
+        expect(response.body).to include('room#shareInvite')
       end
     end
 
@@ -85,6 +194,12 @@ RSpec.describe RoomsController, type: :controller do
         expect(assigns(:participant)).to be_present
         expect(assigns(:participant).name).to eq(participant.name)
       end
+
+      it '参加者IDをdata-room-self-id-valueに含め、自分の行に（あなた）と表示する' do
+        get :show, params: { id: room.id }
+        expect(response.body).to include("data-room-self-id-value=\"#{participant.id}\"")
+        expect(response.body).to include('（あなた）')
+      end
     end
 
     context '未認証でアクセスする場合' do
@@ -92,6 +207,41 @@ RSpec.describe RoomsController, type: :controller do
         get :show, params: { id: room.id }
         expect(response).to have_http_status(:success)
         expect(response).to render_template(:join_form)
+      end
+
+      it '参加フォームに既存参加者名のdata-name-form-taken-valueを含める' do
+        get :show, params: { id: room.id }
+        expect(response.body).to include('data-name-form-taken-value')
+        expect(response.body).to include(owner_name)
+      end
+
+      it 'ページタイトルにルームIDを含める' do
+        get :show, params: { id: room.id }
+        expect(response.body).to include("<title>Choose You - ルーム #{room.id} に参加</title>")
+      end
+    end
+
+    context 'owner_tokenパラメータ付きの旧リンクでアクセスする場合' do
+      it '有効なトークンならクッキーを設定してリダイレクトする' do
+        get :show, params: { id: room.id, owner_token: room.owner_token }
+        expect(response).to redirect_to(room_path(room.id))
+        expect(cookies.signed["owner_token_#{room.id}"]).to eq(room.owner_token)
+      end
+
+      it '無効なトークンならクッキーを設定せずリダイレクトする' do
+        get :show, params: { id: room.id, owner_token: 'invalid_token' }
+        expect(response).to redirect_to(room_path(room.id))
+        expect(cookies.signed["owner_token_#{room.id}"]).to be_nil
+      end
+    end
+
+    context 'participant_tokenパラメータ付きの旧リンクでアクセスする場合' do
+      let!(:participant) { RoomRegistry.add_participant(room_id: room.id, name: '参加者') }
+
+      it '有効なトークンならクッキーを設定してリダイレクトする' do
+        get :show, params: { id: room.id, participant_token: participant.token }
+        expect(response).to redirect_to(room_path(room.id))
+        expect(cookies.signed["participant_token_#{room.id}"]).to eq(participant.token)
       end
     end
   end
@@ -108,6 +258,12 @@ RSpec.describe RoomsController, type: :controller do
 
       expect(response).to have_http_status(:redirect)
       expect(response.location).to include(room_path(room.id))
+    end
+
+    it 'リダイレクト先のURLにparticipant_tokenを含めない' do
+      post :join, params: { id: room.id, name: participant_name }
+      expect(response.location).not_to include('participant_token')
+      expect(response.location).to end_with(room_path(room.id))
     end
 
     it '参加者トークンをクッキーに保存する' do
@@ -138,6 +294,17 @@ RSpec.describe RoomsController, type: :controller do
         }.to raise_error(ActionController::ParameterMissing)
       end
     end
+
+    context '名前が空白のみの場合' do
+      it '参加者を追加せずルームにリダイレクトする' do
+        expect {
+          post :join, params: { id: room.id, name: '   ' }
+        }.not_to change { RoomRegistry.participant_list(room.id).size }
+
+        expect(response).to redirect_to(room_path(room.id))
+        expect(flash[:alert]).to eq('名前を入力してください')
+      end
+    end
   end
 
   describe 'POST #select' do
@@ -146,7 +313,7 @@ RSpec.describe RoomsController, type: :controller do
     let!(:participant) { RoomRegistry.add_participant(room_id: room.id, name: '参加者') }
 
     before do
-      cookies.signed[:owner_token] = room.owner_token
+      cookies.signed["owner_token_#{room.id}"] = room.owner_token
     end
 
     it '抽選を実行してリダイレクトする' do
@@ -166,7 +333,7 @@ RSpec.describe RoomsController, type: :controller do
 
     context 'オーナーでない場合' do
       before do
-        cookies.signed[:owner_token] = 'invalid_token'
+        cookies.signed["owner_token_#{room.id}"] = 'invalid_token'
       end
 
       it 'Forbiddenエラーを返す' do
@@ -179,6 +346,92 @@ RSpec.describe RoomsController, type: :controller do
       it 'countパラメータなしでもリダイレクトされる' do
         post :select, params: { id: room.id }
         expect(response).to have_http_status(:found)
+      end
+    end
+
+    context 'JSON形式でリクエストする場合' do
+      it '抽選を実行してokと抽選結果を返す' do
+        expect {
+          post :select, params: { id: room.id, count: '1' }, format: :json
+        }.to have_broadcasted_to("room_#{room.id}").with(hash_including('type' => 'selection', 'animate' => true))
+
+        expect(response).to have_http_status(:success)
+
+        json = JSON.parse(response.body)
+        expect(json['ok']).to be true
+        expect(json['selection']['id']).to be_present
+        expect(json['selection']['number']).to eq(1)
+        expect(json['selection']['count']).to eq(1)
+        expect(json['selection']['selected']).to all(include('id', 'name'))
+      end
+
+      it 'countが0の場合はエラーを返す' do
+        post :select, params: { id: room.id, count: '0' }, format: :json
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(JSON.parse(response.body)['error']).to be_present
+      end
+
+      it '参加者数より多い場合はエラーを返す' do
+        post :select, params: { id: room.id, count: '99' }, format: :json
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(JSON.parse(response.body)['error']).to eq('抽選対象(2人)以下の人数を指定してください')
+      end
+
+      it 'JSON成功レスポンスにhistoryを含める' do
+        post :select, params: { id: room.id, count: '1' }, format: :json
+
+        json = JSON.parse(response.body)
+        expect(json['history']).to be_present
+        expect(json['history'].first).to include('id', 'number', 'selected')
+        expect(json['history'].first['selected']).to all(include('id', 'name'))
+      end
+
+      it 'include_owner: "0"の場合オーナーを抽選対象から除外する' do
+        post :select, params: { id: room.id, count: '1', include_owner: '0' }, format: :json
+
+        json = JSON.parse(response.body)
+        selected_ids = json['selection']['selected'].map { |s| s['id'] }
+        expect(selected_ids).not_to include(room.owner_id)
+      end
+
+      it 'exclude_winners: "1"の場合、前回の当選者を抽選対象から除外する' do
+        post :select, params: { id: room.id, count: '1' }, format: :json
+        first_winner_id = JSON.parse(response.body)['selection']['selected'].first['id']
+
+        post :select, params: { id: room.id, count: '1', exclude_winners: '1' }, format: :json
+        second_selected_ids = JSON.parse(response.body)['selection']['selected'].map { |s| s['id'] }
+
+        expect(second_selected_ids).not_to include(first_winner_id)
+      end
+
+      it 'include_ownerパラメータがない場合はオーナーを抽選対象に含める（後方互換）' do
+        post :select, params: { id: room.id, count: '2' }, format: :json
+
+        selected_ids = JSON.parse(response.body)['selection']['selected'].map { |s| s['id'] }
+        expect(selected_ids).to include(room.owner_id)
+      end
+
+      it '抽選対象が空の場合422を返す' do
+        solo_room, solo_token = RoomRegistry.create_room(owner_name: 'ソロオーナー')
+        cookies.signed["owner_token_#{solo_room.id}"] = solo_token
+
+        post :select, params: { id: solo_room.id, count: '1', include_owner: '0' }, format: :json
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(JSON.parse(response.body)['error']).to eq('抽選対象の参加者がいません')
+      end
+
+      it '検証後の抽選でプールが変化して空配列が返った場合は422を返しブロードキャストしない（競合対策）' do
+        allow(RoomRegistry).to receive(:select_random).and_return([])
+
+        expect {
+          post :select, params: { id: room.id, count: '1' }, format: :json
+        }.not_to have_broadcasted_to("room_#{room.id}")
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(JSON.parse(response.body)['error']).to eq('抽選できませんでした。もう一度お試しください')
       end
     end
   end
@@ -197,11 +450,24 @@ RSpec.describe RoomsController, type: :controller do
 
       expect(response).to have_http_status(:success)
       expect(response.content_type).to include('application/json')
-      
+
       json = JSON.parse(response.body)
       expect(json['participants']).to be_present
+      expect(json['participants']).to all(include('id', 'name'))
       expect(json['selection']).to be_present
+      expect(json['selection']['id']).to be_present
+      expect(json['selection']['number']).to eq(1)
       expect(json['selection']['count']).to eq(1)
+      expect(json['history']).to be_present
+      expect(json['history'].first).to include('id', 'number', 'selected')
+      expect(json['history'].first['selected']).to all(include('id', 'name'))
+    end
+
+    it 'トークンを含まない' do
+      get :updates, params: { id: room.id }, format: :json
+
+      expect(response.body).not_to include(room.owner_token)
+      expect(response.body).not_to include(participant.token)
     end
 
     context '存在しないルームの場合' do
@@ -212,19 +478,142 @@ RSpec.describe RoomsController, type: :controller do
     end
   end
 
+  describe 'DELETE #remove_participant' do
+    let(:owner_name) { 'テストオーナー' }
+    let!(:room) { RoomRegistry.create_room(owner_name: owner_name).first }
+    let!(:participant) { RoomRegistry.add_participant(room_id: room.id, name: '参加者') }
+
+    context 'オーナーとして削除する場合' do
+      before do
+        cookies.signed["owner_token_#{room.id}"] = room.owner_token
+      end
+
+      it '参加者を削除してokを返し、参加者更新をブロードキャストする' do
+        expect {
+          delete :remove_participant, params: { id: room.id, participant_id: participant.id }, format: :json
+        }.to have_broadcasted_to("room_#{room.id}")
+
+        expect(response).to have_http_status(:success)
+        expect(JSON.parse(response.body)).to eq({ 'ok' => true })
+        expect(RoomRegistry.participant_list(room.id).map(&:id)).not_to include(participant.id)
+      end
+
+      it 'オーナー自身のidを指定した場合422を返し削除しない' do
+        delete :remove_participant, params: { id: room.id, participant_id: room.owner_id }, format: :json
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(JSON.parse(response.body)['error']).to eq('オーナーは削除できません')
+      end
+
+      it '存在しない参加者idの場合404を返す' do
+        delete :remove_participant, params: { id: room.id, participant_id: 'nonexistent' }, format: :json
+
+        expect(response).to have_http_status(:not_found)
+        expect(JSON.parse(response.body)['error']).to eq('参加者が見つかりません')
+      end
+    end
+
+    context 'オーナーでない場合' do
+      before do
+        cookies.signed["participant_token_#{room.id}"] = participant.token
+      end
+
+      it '403とエラーメッセージを返す' do
+        delete :remove_participant, params: { id: room.id, participant_id: participant.id }, format: :json
+
+        expect(response).to have_http_status(:forbidden)
+        expect(JSON.parse(response.body)['error']).to eq('権限がありません')
+      end
+    end
+
+    context '存在しないルームの場合' do
+      before do
+        cookies.signed["owner_token_#{room.id}"] = room.owner_token
+      end
+
+      it '404とエラーメッセージを返す' do
+        delete :remove_participant, params: { id: 'nonexistent', participant_id: participant.id }, format: :json
+
+        expect(response).to have_http_status(:not_found)
+        expect(JSON.parse(response.body)['error']).to eq('部屋が見つかりません')
+      end
+    end
+  end
+
+  describe 'POST #leave' do
+    let(:owner_name) { 'テストオーナー' }
+    let!(:room) { RoomRegistry.create_room(owner_name: owner_name).first }
+    let!(:participant) { RoomRegistry.add_participant(room_id: room.id, name: '参加者') }
+
+    context '参加者として退出する場合' do
+      before do
+        cookies.signed["participant_token_#{room.id}"] = participant.token
+      end
+
+      it '参加者を削除し、参加者クッキーを削除して、通知付きでルートにリダイレクトする' do
+        expect {
+          post :leave, params: { id: room.id }
+        }.to have_broadcasted_to("room_#{room.id}")
+
+        expect(response).to redirect_to(root_path)
+        expect(flash[:notice]).to eq('ルームから退出しました')
+        expect(RoomRegistry.participant_list(room.id).map(&:id)).not_to include(participant.id)
+        expect(cookies.signed["participant_token_#{room.id}"]).to be_nil
+      end
+
+      it '退出後にGET showで参加フォームが表示される' do
+        post :leave, params: { id: room.id }
+
+        get :show, params: { id: room.id }
+        expect(response).to render_template(:join_form)
+      end
+    end
+
+    context '参加者idがnilのレガシールームの場合' do
+      before do
+        participant.id = nil
+        cookies.signed["participant_token_#{room.id}"] = participant.token
+      end
+
+      it 'tokenで参加者を特定して削除する' do
+        expect {
+          post :leave, params: { id: room.id }
+        }.to change { room.participants.size }.from(1).to(0)
+
+        expect(response).to redirect_to(root_path)
+      end
+    end
+
+    context '参加者クッキーがない場合' do
+      it 'ルームにリダイレクトする' do
+        post :leave, params: { id: room.id }
+        expect(response).to redirect_to(room_path(room.id))
+      end
+    end
+
+    context '存在しないルームの場合' do
+      it 'ルートパスにリダイレクトする' do
+        post :leave, params: { id: 'nonexistent' }
+
+        expect(response).to redirect_to(root_path)
+        expect(flash[:alert]).to eq('部屋が見つかりません。部屋が削除されたか、セッションが期限切れの可能性があります。')
+      end
+    end
+  end
+
   describe 'private methods' do
     let(:owner_name) { 'テストオーナー' }
     let!(:room) { RoomRegistry.create_room(owner_name: owner_name).first }
 
     describe '#owner_token_matches?' do
-      it 'オーナートークンが一致する場合trueを返す' do
+      it '旧仕様のグローバルなowner_tokenクッキーでもオーナー権限が有効' do
         cookies.signed[:owner_token] = room.owner_token
         get :show, params: { id: room.id }
         expect(assigns(:owner_view)).to be true
       end
 
       it 'オーナートークンが一致しない場合falseを返す' do
-        cookies.signed[:owner_token] = 'invalid_token'
+        cookies.signed["owner_token_#{room.id}"] = 'invalid_token'
         get :show, params: { id: room.id }
         expect(response).to render_template(:join_form)
       end

@@ -13,15 +13,15 @@ class RoomChannel < ApplicationCable::Channel
     transmit({ type: 'ping', message: 'ActionCable connected successfully', timestamp: Time.current.to_i })
     
     # 参加者一覧を送信
-    participants_data = RoomRegistry.participant_list(room_id).map { |p| { name: p.name } }
+    participants_data = RoomRegistry.participant_list(room_id).map { |p| { id: p.id, name: p.name } }
     transmit({ type: 'participants', participants: participants_data })
     Rails.logger.info "👥 ActionCable: Sent #{participants_data.size} participants to room #{room_id}"
-    
+
     # 最後の抽選結果があれば送信
     room = RoomRegistry.find_room(room_id)
     if room&.last_selection && room.last_selection[:selected]
       last = room.last_selection
-      transmit({ type: 'selection', selected: last[:selected], count: last[:count] })
+      transmit({ type: 'selection', id: last[:id], number: last[:number], selected: last[:selected], count: last[:count], history: ActionCableBroadcastService.compact_history(room.history) })
       Rails.logger.info "🎯 ActionCable: Sent last selection to room #{room_id}"
     end
   rescue => e

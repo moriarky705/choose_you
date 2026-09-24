@@ -6,8 +6,13 @@ class ActionCableBroadcastService
     new(room_id).broadcast_participants_update
   end
 
-  def self.broadcast_selection_update(room_id, selected, count)
-    new(room_id).broadcast_selection_update(selected, count)
+  def self.broadcast_selection_update(room_id, selection, history)
+    new(room_id).broadcast_selection_update(selection, history)
+  end
+
+  # ブロードキャスト/JSON/チャンネル送信で共通利用する、トークンを含まない抽選履歴の圧縮表現
+  def self.compact_history(history)
+    (history || []).map { |entry| { id: entry[:id], number: entry[:number], selected: entry[:selected] } }
   end
 
   def initialize(room_id)
@@ -25,14 +30,17 @@ class ActionCableBroadcastService
     log_broadcast_error(e)
   end
 
-  def broadcast_selection_update(selected, count)
-    selection_data = selected.map { |p| { name: p.name } }
+  def broadcast_selection_update(selection, history)
     broadcast_message(
       type: 'selection',
-      selected: selection_data,
-      count: count
+      id: selection[:id],
+      number: selection[:number],
+      selected: selection[:selected],
+      count: selection[:count],
+      animate: true,
+      history: self.class.compact_history(history)
     )
-    log_broadcast('selection', selection_data.size)
+    log_broadcast('selection', selection[:selected].size)
   rescue => e
     log_broadcast_error(e)
   end
@@ -40,7 +48,7 @@ class ActionCableBroadcastService
   private
 
   def participants_for_broadcast
-    RoomRegistry.participant_list(@room_id).map { |p| { name: p.name } }
+    RoomRegistry.participant_list(@room_id).map { |p| { id: p.id, name: p.name } }
   end
 
   def broadcast_message(message)

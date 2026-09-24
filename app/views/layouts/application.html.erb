@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title><%= content_for(:title) || "Room Selector" %></title>
+    <title><%= content_for(:title) || "Choose You" %></title>
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
@@ -26,8 +26,9 @@
   <body class="bg-gray-50 min-h-screen">
     <div class="container mx-auto px-4">
       <% flash.each do |type, msg| %>
-        <div class="mb-4 p-3 rounded text-sm <%= type.to_s == 'alert' ? 'bg-red-100 text-red-800 border border-red-200' : 'bg-green-100 text-green-800 border border-green-200' %>">
-          <%= msg %>
+        <div data-controller="flash" data-flash-auto-dismiss-value="<%= type.to_s == 'alert' ? 'false' : 'true' %>" role="<%= type.to_s == 'alert' ? 'alert' : 'status' %>" class="mb-4 p-3 rounded text-sm flex items-start justify-between gap-3 <%= type.to_s == 'alert' ? 'bg-red-100 text-red-800 border border-red-200' : 'bg-green-100 text-green-800 border border-green-200' %>">
+          <span><%= msg %></span>
+          <button type="button" data-action="click->flash#dismiss" class="shrink-0 opacity-60 hover:opacity-100" aria-label="閉じる">×</button>
         </div>
       <% end %>
       <%= yield %>
