@@ -47,15 +47,23 @@ docker run --rm --name choose_you_dev -p 3000:3000 \
   bash -c "bundle install --quiet && bin/dev"
 ```
 
+The layout loads `/assets/application.js`, which only exists under `public/assets/` (gitignored; production builds it in `Dockerfile.prd`). Without it no JS runs locally. Run `npm run build:production` before checking in the browser, and again after JS changes.
+
 Wait until `http://localhost:3000/up` returns 200, then use the wmux browser panel (not Playwright) so the user can watch:
 
 1. `wmux browser open http://localhost:3000` → create a room as the owner.
-2. Note the invite link on the room page.
-3. The participant needs a separate cookie jar. Since the panel shares cookies with the owner, open the invite link in a private context if available; otherwise check the participant side with `curl -c/-b` against the join form and `/rooms/:id/updates`, and tell the user which side was checked visually.
-4. Run a draw and confirm: results appear, participant count and empty states update, no console errors (`wmux browser eval` to inspect), confetti fires once.
-5. Stop the server when done: `docker stop choose_you_dev`.
+2. The panel has one cookie jar. For a two-role check, make the panel one role and drive the other with `curl` cookie jars (fetch `authenticity_token` from the form, POST `/rooms` or `/rooms/:id/join`, JSON `POST /rooms/:id/select` with the page's `csrf-token`).
+3. Run a draw and confirm: roulette, results, won/lost banner, history, participant count, connection label.
+4. Stop the server when done: `docker stop choose_you_dev` (in-memory rooms are lost on restart).
 
-If `wmux` is not on PATH or not running (the CLI lives at `/mnt/c/Users/morin/Downloads/wmux-0.7.0-win-x64/resources/cli/wmux.js`; run it with `node` and it prints "wmux is not running" when the app is closed), fall back to `curl` with separate cookie jars per role: fetch the `authenticity_token` from the form, POST `/rooms` and `/rooms/:id/join`, then inspect redirects, cookies, the rendered HTML and `/rooms/:id/updates`. Tell the user that JS behavior was not checked visually.
+wmux CLI notes (wmux 0.7.0 from WSL):
+- `wmux` is `~/.local/bin/wmux`, which runs the CLI via `wmux.exe` in Electron-as-node mode (Linux node can't open the Windows pipe). Each call takes ~1–2 s.
+- `browser fill/click/type @eN` fail with "Invalid parameters"; drive the page with `wmux browser eval` instead. Schedule clicks with `setTimeout(() => el.click(), 50)` so a navigation doesn't abort the eval.
+- There is no `browser reload`; use `eval "location.reload()"`. `screenshot --full` renders blank outside the viewport; scroll and take viewport screenshots.
+- For anything shorter than a few seconds (roulette, flash auto-dismiss), record state in-page with `setInterval` into a `window.__samples` array and read it afterwards; a background panel throttles timers to ~1 s.
+- Stub `window.confirm = () => true` before clicking buttons that confirm.
+
+If wmux is not running (`wmux` prints "wmux is not running"), fall back to `curl` only and tell the user that JS behavior was not checked visually.
 
 ## 4. Deploy (Render)
 

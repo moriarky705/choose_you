@@ -44,7 +44,7 @@ The suite must stay at `0 failures`. `spec/support/room_registry.rb` gives every
 
 ## Conventions and caveats
 
-- **The JS bundle is committed.** After editing anything under `app/javascript/`, run `npm run build` and include `app/assets/builds/application.js` (+ `.map`) in the change. The layout loads `/assets/application.js` directly.
+- **The JS bundle is committed.** After editing anything under `app/javascript/`, run `npm run build` and include `app/assets/builds/application.js` (+ `.map`) in the change. Note the layout loads `/assets/application.js`, which is served from `public/assets/` (gitignored, built by `npm run build:production` — `Dockerfile.prd` does this). Locally, run `npm run build:production` too or no JS loads.
 - **Two storage backends must stay in sync.** Any change to room/participant data or `RoomRegistry` methods must be made in both `InMemoryRoomService` and `RedisRoomService`. Tests only exercise InMemory, so Redis changes must be checked by reading (Redis stores JSON with symbolized keys; Structs are rebuilt on read).
 - **Two delivery paths must stay in sync.** ActionCable payloads (`ActionCableBroadcastService`, `RoomChannel#subscribed`) and the polling JSON (`RoomsController#room_updates_data`) feed the same `MessageHandler` in JS; keep their shapes consistent.
 - **Never expose tokens.** `owner_token` / participant tokens grant access. They must not appear in broadcasts, polling JSON, rendered HTML shared with others, or logs.
