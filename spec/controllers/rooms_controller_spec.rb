@@ -1,6 +1,8 @@
 require 'rails_helper'
 
 RSpec.describe RoomsController, type: :controller do
+  include ActionCable::TestHelper
+
   describe 'GET #new' do
     it 'ルーム作成画面を表示する' do
       get :new
@@ -52,6 +54,8 @@ RSpec.describe RoomsController, type: :controller do
   end
 
   describe 'GET #show' do
+    render_views
+
     let(:owner_name) { 'テストオーナー' }
     let!(:room) { RoomRegistry.create_room(owner_name: owner_name).first }
 
@@ -75,6 +79,11 @@ RSpec.describe RoomsController, type: :controller do
         expect(assigns(:participants)).to be_present
       end
 
+      it 'オーナーIDをdata-room-self-id-valueに含める' do
+        get :show, params: { id: room.id }
+        expect(response.body).to include("data-room-self-id-value=\"#{room.owner_id}\"")
+      end
+
       it '抽選人数パラメータを保持する' do
         get :show, params: { id: room.id, count: '3' }
         expect(assigns(:last_count)).to eq(3)
@@ -94,6 +103,12 @@ RSpec.describe RoomsController, type: :controller do
         expect(assigns(:owner_view)).to be false
         expect(assigns(:participant)).to be_present
         expect(assigns(:participant).name).to eq(participant.name)
+      end
+
+      it '参加者IDをdata-room-self-id-valueに含め、自分の行に（あなた）と表示する' do
+        get :show, params: { id: room.id }
+        expect(response.body).to include("data-room-self-id-value=\"#{participant.id}\"")
+        expect(response.body).to include('（あなた）')
       end
     end
 
@@ -221,6 +236,36 @@ RSpec.describe RoomsController, type: :controller do
         expect(response).to have_http_status(:found)
       end
     end
+
+    context 'JSON形式でリクエストする場合' do
+      it '抽選を実行してokと抽選結果を返す' do
+        expect {
+          post :select, params: { id: room.id, count: '1' }, format: :json
+        }.to have_broadcasted_to("room_#{room.id}").with(hash_including('type' => 'selection', 'animate' => true))
+
+        expect(response).to have_http_status(:success)
+
+        json = JSON.parse(response.body)
+        expect(json['ok']).to be true
+        expect(json['selection']['id']).to be_present
+        expect(json['selection']['count']).to eq(1)
+        expect(json['selection']['selected']).to all(include('id', 'name'))
+      end
+
+      it 'countが0の場合はエラーを返す' do
+        post :select, params: { id: room.id, count: '0' }, format: :json
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(JSON.parse(response.body)['error']).to be_present
+      end
+
+      it '参加者数より多い場合はエラーを返す' do
+        post :select, params: { id: room.id, count: '99' }, format: :json
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(JSON.parse(response.body)['error']).to be_present
+      end
+    end
   end
 
   describe 'GET #updates' do
@@ -237,11 +282,20 @@ RSpec.describe RoomsController, type: :controller do
 
       expect(response).to have_http_status(:success)
       expect(response.content_type).to include('application/json')
-      
+
       json = JSON.parse(response.body)
       expect(json['participants']).to be_present
+      expect(json['participants']).to all(include('id', 'name'))
       expect(json['selection']).to be_present
+      expect(json['selection']['id']).to be_present
       expect(json['selection']['count']).to eq(1)
+    end
+
+    it 'トークンを含まない' do
+      get :updates, params: { id: room.id }, format: :json
+
+      expect(response.body).not_to include(room.owner_token)
+      expect(response.body).not_to include(participant.token)
     end
 
     context '存在しないルームの場合' do

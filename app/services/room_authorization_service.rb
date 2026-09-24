@@ -36,7 +36,8 @@ class RoomAuthorizationService
     @owner_user ||= AuthorizedUser.new(
       type: :owner,
       name: @room.owner_name,
-      token: @room.owner_token
+      token: @room.owner_token,
+      id: @room.owner_id
     )
   end
 
@@ -48,7 +49,8 @@ class RoomAuthorizationService
     @participant_user ||= AuthorizedUser.new(
       type: :participant,
       name: participant.name,
-      token: participant.token
+      token: participant.token,
+      id: participant.id
     )
   end
 
@@ -62,12 +64,13 @@ class RoomAuthorizationService
 
   # 認証済みユーザーの情報を格納する値オブジェクト
   class AuthorizedUser
-    attr_reader :type, :name, :token
+    attr_reader :type, :name, :token, :id
 
-    def initialize(type:, name:, token:)
+    def initialize(type:, name:, token:, id:)
       @type = type
       @name = name
       @token = token
+      @id = id
     end
 
     def owner?

@@ -5,8 +5,8 @@ require 'thread'
 
 # 部屋と参加者を管理するレジストリ（Redis or InMemory）
 class RoomRegistry
-  Room = Struct.new(:id, :owner_token, :owner_name, :participants, :created_at, :last_selection, keyword_init: true)
-  Participant = Struct.new(:token, :name, :joined_at, keyword_init: true)
+  Room = Struct.new(:id, :owner_token, :owner_id, :owner_name, :participants, :created_at, :last_selection, keyword_init: true)
+  Participant = Struct.new(:token, :id, :name, :joined_at, keyword_init: true)
 
   class << self
     def service
@@ -36,8 +36,8 @@ end
 
 # インメモリ実装（開発・テスト用）
 class InMemoryRoomService
-  Room = Struct.new(:id, :owner_token, :owner_name, :participants, :created_at, :last_selection, keyword_init: true)
-  Participant = Struct.new(:token, :name, :joined_at, keyword_init: true)
+  Room = Struct.new(:id, :owner_token, :owner_id, :owner_name, :participants, :created_at, :last_selection, keyword_init: true)
+  Participant = Struct.new(:token, :id, :name, :joined_at, keyword_init: true)
 
   def initialize
     @rooms = {}
@@ -47,10 +47,11 @@ class InMemoryRoomService
   def create_room(owner_name:)
     room_id = generate_unique_room_id
     owner_token = generate_token(16)
-    
+
     room = Room.new(
       id: room_id,
       owner_token: owner_token,
+      owner_id: SecureRandom.alphanumeric(10),
       owner_name: owner_name,
       participants: [],
       created_at: Time.now,
@@ -140,6 +141,7 @@ class InMemoryRoomService
   def create_participant(name)
     Participant.new(
       token: generate_token(12),
+      id: SecureRandom.alphanumeric(10),
       name: name,
       joined_at: Time.now
     )
@@ -152,18 +154,20 @@ class InMemoryRoomService
   def build_complete_participant_list(room)
     owner_as_participant = Participant.new(
       token: room.owner_token,
+      id: room.owner_id,
       name: room.owner_name,
       joined_at: room.created_at
     )
-    
+
     [owner_as_participant, *room.participants]
   end
 
   def update_last_selection(room, selected, count)
     room.last_selection = {
+      id: SecureRandom.hex(6),
       at: Time.now,
       count: count,
-      selected: selected.map { |p| { name: p.name } }
+      selected: selected.map { |p| { id: p.id, name: p.name } }
     }
   end
 end

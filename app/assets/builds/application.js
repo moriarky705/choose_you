@@ -9026,18 +9026,22 @@
 
   // app/javascript/controllers/room_controller.js
   var room_controller_default = class extends Controller {
-    static values = { roomId: String, owner: Boolean };
-    static targets = ["participants", "selectionList", "countInput", "selectionHeader", "selectionCount", "inviteUrl", "copyFeedback", "copyButton", "selectionStatus", "selectionSubmit", "participantCount", "selectionEmpty"];
+    static values = { roomId: String, owner: Boolean, selfId: String };
+    static targets = ["participants", "selectionList", "countInput", "selectionHeader", "selectionCount", "inviteUrl", "copyFeedback", "copyButton", "selectionStatus", "selectionSubmit", "participantCount", "selectionEmpty", "selfResult", "roulette", "selectionForm", "selectionError"];
     // Connection and initialization
     connect() {
       console.log("Room controller connecting...", this.roomIdValue);
       this.connectionConfig = new ConnectionConfig();
+      this.initializeFromServerRenderedState();
       this.setupRealtimeConnection();
       this.animateSelectionResults();
-      this.celebrateInitialSelection();
     }
     disconnect() {
       this.cleanup();
+    }
+    initializeFromServerRenderedState() {
+      this.currentParticipants = this.hasParticipantsTarget ? Array.from(this.participantsTarget.querySelectorAll("[data-participant-name]")).map((el) => ({ name: el.dataset.participantName })) : [];
+      this.shownSelectionId = this.hasSelectionListTarget && this.selectionListTarget.dataset.selectionId || "";
     }
     // Real-time connection management
     setupRealtimeConnection() {
@@ -9107,25 +9111,94 @@
     }
     // UI rendering methods
     renderParticipants(list) {
+      this.currentParticipants = list;
       if (!this.hasParticipantsTarget) return;
       console.log("\u{1F3A8} Rendering participants:", list.length, "participants");
-      const renderer = new ParticipantRenderer();
+      const renderer = new ParticipantRenderer(this.selfIdValue);
       this.participantsTarget.innerHTML = renderer.render(list);
       if (this.hasParticipantCountTarget) {
         this.participantCountTarget.textContent = list.length;
       }
     }
-    renderSelection(selected, count) {
+    renderSelection(selection) {
+      if (selection.id && selection.id === this.shownSelectionId) return;
+      this.shownSelectionId = selection.id;
+      if (this._rouletteCancel) this._rouletteCancel();
+      if (this.hasRouletteTarget) this.rouletteTarget.classList.add("hidden");
+      if (this.hasSelectionListTarget) this.selectionListTarget.classList.remove("hidden");
+      const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (selection.animate && !prefersReducedMotion && this.currentParticipants.length > 1) {
+        this.playRoulette(selection.selected).then(() => this.revealSelection(selection, true));
+      } else {
+        this.revealSelection(selection, selection.animate);
+      }
+    }
+    revealSelection(selection, celebrate) {
       this.finishSelection();
       if (!this.hasSelectionListTarget) return;
-      const renderer = new SelectionRenderer();
-      this.selectionListTarget.innerHTML = renderer.render(selected);
-      this.updateSelectionHeader(selected.length);
+      const renderer = new SelectionRenderer(this.selfIdValue);
+      this.selectionListTarget.innerHTML = renderer.render(selection.selected);
+      this.selectionListTarget.classList.remove("hidden");
+      this.updateSelectionHeader(selection.selected.length);
       if (this.hasSelectionEmptyTarget) {
         this.selectionEmptyTarget.classList.add("hidden");
       }
+      this.renderSelfResult(selection.selected);
       this.animateSelectionResults();
-      this.celebrateSelection(selected);
+      if (celebrate) this.celebrateSelection();
+    }
+    renderSelfResult(selected) {
+      if (!this.hasSelfResultTarget) return;
+      if (!this.selfIdValue) {
+        this.selfResultTarget.classList.add("hidden");
+        return;
+      }
+      const won = selected.some((p) => p.id === this.selfIdValue);
+      this.selfResultTarget.classList.remove("hidden");
+      this.selfResultTarget.textContent = won ? "\u{1F389} \u3042\u306A\u305F\u304C\u9078\u3070\u308C\u307E\u3057\u305F\uFF01" : "\u4ECA\u56DE\u306F\u9078\u3070\u308C\u307E\u305B\u3093\u3067\u3057\u305F";
+      this.selfResultTarget.classList.toggle("bg-amber-100", won);
+      this.selfResultTarget.classList.toggle("text-amber-800", won);
+      this.selfResultTarget.classList.toggle("bg-gray-100", !won);
+      this.selfResultTarget.classList.toggle("text-gray-600", !won);
+    }
+    // Roulette build-up before revealing the real winners
+    playRoulette(selected) {
+      if (this._rouletteCancel) this._rouletteCancel();
+      if (!this.hasRouletteTarget || this.currentParticipants.length === 0) return Promise.resolve();
+      const names = this.currentParticipants.map((p) => p.name);
+      this.rouletteTarget.classList.remove("hidden");
+      if (this.hasSelectionListTarget) this.selectionListTarget.classList.add("hidden");
+      if (this.hasSelfResultTarget) this.selfResultTarget.classList.add("hidden");
+      if (this.hasSelectionEmptyTarget) this.selectionEmptyTarget.classList.add("hidden");
+      return new Promise((resolve) => {
+        let cancelled = false;
+        this._rouletteCancel = () => {
+          cancelled = true;
+        };
+        const totalDuration = 2200;
+        let elapsed = 0;
+        let delay = 60;
+        const tick = () => {
+          if (cancelled) return;
+          elapsed += delay;
+          if (elapsed >= totalDuration) {
+            const winnerName = selected[0] && selected[0].name || "";
+            this.rouletteTarget.textContent = winnerName;
+            window.setTimeout(() => {
+              if (cancelled) return;
+              this.rouletteTarget.classList.add("hidden");
+              if (this.hasSelectionListTarget) this.selectionListTarget.classList.remove("hidden");
+              resolve();
+            }, 300);
+            return;
+          }
+          const randomName = names[Math.floor(Math.random() * names.length)];
+          this.rouletteTarget.textContent = randomName;
+          delay *= 1.12;
+          window.setTimeout(tick, delay);
+        };
+        tick();
+      });
     }
     updateSelectionHeader(count) {
       if (this.hasSelectionHeaderTarget && this.selectionHeaderTarget.hidden) {
@@ -9147,18 +9220,8 @@
         );
       });
     }
-    celebrateInitialSelection() {
-      if (!this.hasSelectionListTarget) return;
-      const selected = Array.from(
-        this.selectionListTarget.querySelectorAll("[data-selection-name]")
-      ).map((card) => ({ name: card.dataset.selectionName }));
-      if (selected.length > 0) this.celebrateSelection(selected);
-    }
-    celebrateSelection(selected) {
+    celebrateSelection() {
       if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-      const signature = selected.map((participant) => participant.name).join("|");
-      if (signature === this.lastSelectionSignature) return;
-      this.lastSelectionSignature = signature;
       const burst = document.createElement("div");
       burst.setAttribute("aria-hidden", "true");
       burst.style.cssText = "position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:50";
@@ -9190,7 +9253,17 @@
       }
       window.setTimeout(() => burst.remove(), 1900);
     }
-    startSelection() {
+    startSelection(event) {
+      if (this.hasSelectionErrorTarget) {
+        this.selectionErrorTarget.classList.add("hidden");
+        this.selectionErrorTarget.textContent = "";
+      }
+      this.showSelectionSpinner();
+      if (!window.fetch || !this.hasSelectionFormTarget) return;
+      event.preventDefault();
+      this.submitSelectionForm();
+    }
+    showSelectionSpinner() {
       if (this.hasSelectionStatusTarget) {
         this.selectionStatusTarget.classList.remove("hidden");
         this.selectionStatusTarget.classList.add("inline-flex");
@@ -9200,6 +9273,53 @@
         this.selectionSubmitTarget.classList.add("opacity-60", "cursor-not-allowed");
         this.selectionSubmitTarget.value = "\u62BD\u9078\u4E2D\u2026";
       }
+    }
+    async submitSelectionForm() {
+      const form = this.selectionFormTarget;
+      const formData = new FormData(form);
+      const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+      try {
+        const response = await fetch(form.action, {
+          method: "POST",
+          headers: {
+            "Accept": "application/json",
+            "X-CSRF-Token": csrfToken
+          },
+          body: formData
+        });
+        if (!response.ok) {
+          let message = "\u62BD\u9078\u306B\u5931\u6557\u3057\u307E\u3057\u305F";
+          try {
+            const data = await response.json();
+            if (data.error) message = data.error;
+          } catch (parseError) {
+            console.log("Failed to parse selection error response:", parseError);
+          }
+          this.showSelectionError(message);
+          this.finishSelection();
+          return;
+        }
+        try {
+          const data = await response.json();
+          if (data.selection) {
+            this.renderSelection({ ...data.selection, animate: true });
+          } else {
+            this.finishSelection();
+          }
+        } catch (parseError) {
+          console.log("Failed to parse selection response:", parseError);
+          this.finishSelection();
+        }
+      } catch (error2) {
+        console.log("Selection request failed:", error2);
+        this.showSelectionError("\u901A\u4FE1\u306B\u5931\u6557\u3057\u307E\u3057\u305F\u3002\u3082\u3046\u4E00\u5EA6\u304A\u8A66\u3057\u304F\u3060\u3055\u3044");
+        this.finishSelection();
+      }
+    }
+    showSelectionError(message) {
+      if (!this.hasSelectionErrorTarget) return;
+      this.selectionErrorTarget.textContent = message;
+      this.selectionErrorTarget.classList.remove("hidden");
     }
     finishSelection() {
       if (this.hasSelectionStatusTarget) {
@@ -9261,8 +9381,10 @@
       }
       if (data.selection) {
         this.handleSelectionUpdate({
+          id: data.selection.id,
           selected: data.selection.selected,
-          count: data.selection.count
+          count: data.selection.count,
+          animate: false
         });
       }
     }
@@ -9275,7 +9397,7 @@
     }
     handleSelectionUpdate(data) {
       if (data.selected) {
-        this.controller.renderSelection(data.selected, data.count);
+        this.controller.renderSelection({ id: data.id, selected: data.selected, count: data.count, animate: data.animate });
         if (this.controller.hasParticipantsTarget && this.controller.participantsTarget.children.length === 0) {
           console.log("\u{1F504} Participants list disappeared after selection, fetching updates...");
           this.controller.fetchUpdates();
@@ -9284,30 +9406,42 @@
     }
   };
   var ParticipantRenderer = class {
+    constructor(selfId) {
+      this.selfId = selfId;
+    }
     render(participants) {
-      return participants.map(
-        (p, index) => `<div class="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+      return participants.map((p, index) => {
+        const isSelf = Boolean(this.selfId) && p.id === this.selfId;
+        const safeName = this.escapeHtml(p.name);
+        return `<div class="flex items-center p-3 ${isSelf ? "bg-blue-50" : "bg-gray-50"} rounded-lg hover:bg-gray-100 transition-colors" data-participant-name="${safeName}">
         <div class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-medium mr-3">
           ${index + 1}
         </div>
-        <span class="text-gray-900 font-medium">${this.escapeHtml(p.name)}</span>
-      </div>`
-      ).join("");
+        <span class="text-gray-900 font-medium">${safeName}</span>
+        ${isSelf ? '<span class="ml-2 text-xs text-blue-600 font-medium">\uFF08\u3042\u306A\u305F\uFF09</span>' : ""}
+      </div>`;
+      }).join("");
     }
     escapeHtml(unsafe) {
       return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
     }
   };
   var SelectionRenderer = class {
+    constructor(selfId) {
+      this.selfId = selfId;
+    }
     render(selected) {
-      return selected.map(
-        (p, index) => `<div class="flex items-center p-4 bg-amber-50 border border-amber-200 rounded-lg" data-selection-result>
+      return selected.map((p) => {
+        const isSelf = Boolean(this.selfId) && p.id === this.selfId;
+        const safeName = this.escapeHtml(p.name);
+        return `<div class="flex items-center p-4 bg-amber-50 border border-amber-200 rounded-lg ${isSelf ? "ring-2 ring-amber-400" : ""}" data-selection-result data-selection-name="${safeName}">
         <div class="w-10 h-10 bg-amber-600 rounded-full flex items-center justify-center text-white font-bold mr-3">
           ${this.renderStarIcon()}
         </div>
-        <span class="text-gray-900 font-semibold">${this.escapeHtml(p.name)}</span>
-      </div>`
-      ).join("");
+        <span class="text-gray-900 font-semibold">${safeName}</span>
+        ${isSelf ? '<span class="ml-2 text-xs text-amber-700 font-medium">\uFF08\u3042\u306A\u305F\uFF09</span>' : ""}
+      </div>`;
+      }).join("");
     }
     renderStarIcon() {
       return `<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">

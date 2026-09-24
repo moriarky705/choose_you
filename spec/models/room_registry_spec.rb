@@ -14,6 +14,7 @@ RSpec.describe RoomRegistry, type: :model do
       expect(room.id.length).to eq(6)
       expect(room.owner_name).to eq(owner_name)
       expect(room.owner_token).to eq(owner_token)
+      expect(room.owner_id).to be_present
       expect(room.participants).to eq([])
       expect(room.created_at).to be_a(Time)
       expect(room.last_selection).to be_nil
@@ -60,6 +61,7 @@ RSpec.describe RoomRegistry, type: :model do
       expect(participant).to be_a(InMemoryRoomService::Participant)
       expect(participant.name).to eq(participant_name)
       expect(participant.token).to be_a(String)
+      expect(participant.id).to be_present
       expect(participant.joined_at).to be_a(Time)
     end
 
@@ -80,6 +82,7 @@ RSpec.describe RoomRegistry, type: :model do
 
       expect(room.participants).to include(participant1, participant2)
       expect(participant1.token).not_to eq(participant2.token)
+      expect(participant1.id).not_to eq(participant2.id)
     end
   end
 
@@ -94,6 +97,7 @@ RSpec.describe RoomRegistry, type: :model do
         expect(participants.size).to eq(1)
         expect(participants.first.name).to eq(owner_name)
         expect(participants.first.token).to eq(room.owner_token)
+        expect(participants.first.id).to eq(room.owner_id)
       end
     end
 
@@ -141,9 +145,18 @@ RSpec.describe RoomRegistry, type: :model do
         registry.select_random(room_id: room.id, count: 1)
       }.to change { room.last_selection }.from(nil)
 
+      expect(room.last_selection[:id]).to be_present
       expect(room.last_selection[:count]).to eq(1)
       expect(room.last_selection[:at]).to be_a(Time)
       expect(room.last_selection[:selected]).to be_a(Array)
+      expect(room.last_selection[:selected]).to all(include(:id, :name))
+    end
+
+    it '抽選ごとに異なるselection idを発行する' do
+      first_selection_id = registry.select_random(room_id: room.id, count: 1) && room.last_selection[:id]
+      second_selection_id = registry.select_random(room_id: room.id, count: 1) && room.last_selection[:id]
+
+      expect(first_selection_id).not_to eq(second_selection_id)
     end
 
     it '存在しないルームの場合空配列を返す' do

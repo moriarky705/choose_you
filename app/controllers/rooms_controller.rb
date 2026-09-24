@@ -61,14 +61,23 @@ class RoomsController < ApplicationController
     return validation_error if validation_error
 
     count = params[:count].to_i
-    selected = RoomRegistry.select_random(room_id: params[:id], count:)
-    
+    RoomRegistry.select_random(room_id: params[:id], count:)
+    selection = RoomRegistry.find_room(params[:id]).last_selection
+
     # 抽選結果を配信
-    ActionCableBroadcastService.broadcast_selection_update(params[:id], selected, count)
+    ActionCableBroadcastService.broadcast_selection_update(params[:id], selection)
     # 参加者リストも同時に再配信（UIの整合性を保つため）
     ActionCableBroadcastService.broadcast_participants_update(params[:id])
-    
-    redirect_to room_path(params[:id], count: count)
+
+    respond_to do |format|
+      format.json do
+        render json: {
+          ok: true,
+          selection: { id: selection[:id], selected: selection[:selected], count: selection[:count] }
+        }
+      end
+      format.html { redirect_to room_path(params[:id], count: count) }
+    end
   end
 
   def updates
@@ -107,6 +116,7 @@ class RoomsController < ApplicationController
     @participants = RoomRegistry.participant_list(@room.id)
     @last_selection = @room.last_selection
     @last_count = params[:count]&.to_i || 1
+    @self_id = authorized_user.id
   end
 
   def redirect_to_room_if_already_joined
@@ -135,23 +145,29 @@ class RoomsController < ApplicationController
   def validate_selection_params
     count = params[:count].to_i
     participants = RoomRegistry.participant_list(params[:id])
-    
+
     if count <= 0
-      redirect_to room_path(params[:id], count: count), alert: '1以上の人数を指定してください'
-      return true
+      return render_selection_error(count, '1以上の人数を指定してください')
     end
-    
+
     if count > participants.size
-      redirect_to room_path(params[:id], count: count), alert: "参加者数(#{participants.size})以下の人数を指定してください"
-      return true
+      return render_selection_error(count, "参加者数(#{participants.size})以下の人数を指定してください")
     end
-    
+
     false
+  end
+
+  def render_selection_error(count, message)
+    respond_to do |format|
+      format.json { render json: { error: message }, status: :unprocessable_entity }
+      format.html { redirect_to room_path(params[:id], count: count), alert: message }
+    end
+    true
   end
 
   def room_updates_data
     participants = RoomRegistry.participant_list(params[:id])
-    data = { participants: participants.map { |p| { name: p.name } } }
+    data = { participants: participants.map { |p| { id: p.id, name: p.name } } }
     data[:selection] = @room.last_selection if @room.last_selection
     data
   end

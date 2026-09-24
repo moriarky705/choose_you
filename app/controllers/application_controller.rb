@@ -3,5 +3,5 @@ class ApplicationController < ActionController::Base
   allow_browser versions: :modern
   
   # CSRF protection with Render.com configuration
-  protect_from_forgery with: :exception, unless: -> { request.format.json? }
+  protect_from_forgery with: :exception
 end

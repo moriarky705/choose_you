@@ -7,9 +7,12 @@ RSpec.describe RoomChannel, type: :channel do
     # ルームを作成
     @room_result = RoomRegistry.create_room(owner_name: owner_name)
     @room = @room_result[0]  # 配列の最初の要素がroom
-    
+
     # 参加者を追加
     RoomRegistry.add_participant(room_id: @room.id, name: '参加者')
+
+    # ApplicationCable::Connectionのidentified_by(:request_id)相当のスタブ
+    stub_connection(request_id: 'test-request-id')
   end
 
   describe '#subscribed' do
@@ -20,10 +23,17 @@ RSpec.describe RoomChannel, type: :channel do
 
     it 'ルームストリームに接続される' do
       subscribe(room_id: @room.id)
-      
+
       expect(subscription).to be_confirmed
       # ActionCableテストでは実際のストリーム接続状態の確認は困難
       # 代わりに接続が成功したことで十分とする
+    end
+
+    it '参加者一覧をidつきで送信する' do
+      subscribe(room_id: @room.id)
+
+      participants_message = transmissions.find { |t| t['type'] == 'participants' }
+      expect(participants_message['participants']).to all(include('id', 'name'))
     end
 
     context '最後の抽選結果がある場合' do
@@ -34,8 +44,16 @@ RSpec.describe RoomChannel, type: :channel do
 
       it 'チャネルに接続できる' do
         subscribe(room_id: @room.id)
-        
+
         expect(subscription).to be_confirmed
+      end
+
+      it 'idつきでanimateなしの最後の抽選結果を送信する' do
+        subscribe(room_id: @room.id)
+
+        selection_message = transmissions.find { |t| t['type'] == 'selection' }
+        expect(selection_message['id']).to be_present
+        expect(selection_message).not_to have_key('animate')
       end
     end
   end

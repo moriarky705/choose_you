@@ -6,8 +6,8 @@ require 'securerandom'
 
 # Redis バックエンドを使用した部屋管理サービス
 class RedisRoomService
-  Room = Struct.new(:id, :owner_token, :owner_name, :participants, :created_at, :last_selection, keyword_init: true)
-  Participant = Struct.new(:token, :name, :joined_at, keyword_init: true)
+  Room = Struct.new(:id, :owner_token, :owner_id, :owner_name, :participants, :created_at, :last_selection, keyword_init: true)
+  Participant = Struct.new(:token, :id, :name, :joined_at, keyword_init: true)
   
   ROOM_KEY_PREFIX = 'room:'
   ROOM_EXPIRY = 10.days.to_i
@@ -31,6 +31,7 @@ class RedisRoomService
     room_data = {
       id: room_id,
       owner_token: owner_token,
+      owner_id: SecureRandom.alphanumeric(10),
       owner_name: owner_name,
       participants: [],
       created_at: Time.now.iso8601,
@@ -71,10 +72,11 @@ class RedisRoomService
     
     participant = Participant.new(
       token: generate_token(12),
+      id: SecureRandom.alphanumeric(10),
       name: name,
       joined_at: Time.now
     )
-    
+
     room.participants << participant
     store_room_object(room)
     Rails.logger.info "✅ Redis: Participant added successfully: #{participant.name}"
@@ -90,7 +92,7 @@ class RedisRoomService
     
     # オーナーと参加者を含む完全なリスト
     all_participants = [
-      Participant.new(token: room.owner_token, name: room.owner_name, joined_at: room.created_at)
+      Participant.new(token: room.owner_token, id: room.owner_id, name: room.owner_name, joined_at: room.created_at)
     ]
     all_participants.concat(room.participants)
     all_participants
@@ -106,9 +108,10 @@ class RedisRoomService
     
     # InMemoryRoomServiceと同じデータ構造に統一
     room.last_selection = {
+      id: SecureRandom.hex(6),
       at: Time.now,
       count: count,
-      selected: selected.map { |p| { name: p.name } }
+      selected: selected.map { |p| { id: p.id, name: p.name } }
     }
     
     store_room_object(room)
@@ -149,6 +152,7 @@ class RedisRoomService
     room_data = {
       id: room.id,
       owner_token: room.owner_token,
+      owner_id: room.owner_id,
       owner_name: room.owner_name,
       participants: room.participants.map { |p| p.to_h },
       created_at: room.created_at.iso8601,
