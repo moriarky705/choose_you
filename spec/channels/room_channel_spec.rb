@@ -4,8 +4,6 @@ RSpec.describe RoomChannel, type: :channel do
   let(:owner_name) { 'テストオーナー' }
   
   before do
-    # テスト前にレジストリをクリア
-    RoomRegistry.instance.instance_variable_set(:@rooms, {})
     # ルームを作成
     @room_result = RoomRegistry.create_room(owner_name: owner_name)
     @room = @room_result[0]  # 配列の最初の要素がroom

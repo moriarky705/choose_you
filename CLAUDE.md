@@ -40,7 +40,7 @@ npm run build
 
 The README / TESTING.md mention `docker compose`, but there is no compose file in this repo; use the commands above.
 
-**Known broken baseline (2026-09-24):** `47 examples, 45 failures`. The specs still call `RoomRegistry.instance` (and set `@rooms` on it), but `RoomRegistry` is now a class-level facade over `RoomRegistry.service`. Until the specs are fixed, judge a change by "no new failures versus this baseline" and say so explicitly; do not report the suite as passing.
+The suite must stay at `0 failures`. `spec/support/room_registry.rb` gives every example a fresh `InMemoryRoomService`; specs never exercise `RedisRoomService`.
 
 ## Conventions and caveats
 

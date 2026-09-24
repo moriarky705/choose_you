@@ -1,7 +1,7 @@
 require 'rails_helper'
 
 RSpec.describe RoomRegistry, type: :model do
-  let(:registry) { described_class.new }
+  let(:registry) { InMemoryRoomService.new }
 
   describe '#create_room' do
     let(:owner_name) { 'テストオーナー' }
@@ -9,7 +9,7 @@ RSpec.describe RoomRegistry, type: :model do
     it 'ルームを作成してルームとオーナートークンを返す' do
       room, owner_token = registry.create_room(owner_name: owner_name)
 
-      expect(room).to be_a(RoomRegistry::Room)
+      expect(room).to be_a(InMemoryRoomService::Room)
       expect(room.id).to be_a(String)
       expect(room.id.length).to eq(6)
       expect(room.owner_name).to eq(owner_name)
@@ -57,7 +57,7 @@ RSpec.describe RoomRegistry, type: :model do
     it '参加者を追加して参加者オブジェクトを返す' do
       participant = registry.add_participant(room_id: room.id, name: participant_name)
 
-      expect(participant).to be_a(RoomRegistry::Participant)
+      expect(participant).to be_a(InMemoryRoomService::Participant)
       expect(participant.name).to eq(participant_name)
       expect(participant.token).to be_a(String)
       expect(participant.joined_at).to be_a(Time)
@@ -126,7 +126,7 @@ RSpec.describe RoomRegistry, type: :model do
       selected = registry.select_random(room_id: room.id, count: 2)
 
       expect(selected.size).to eq(2)
-      expect(selected).to all(be_a(RoomRegistry::Participant))
+      expect(selected).to all(be_a(InMemoryRoomService::Participant))
     end
 
     it '参加者数より多い人数を指定した場合は全員を返す' do
@@ -152,11 +152,6 @@ RSpec.describe RoomRegistry, type: :model do
   end
 
   describe 'クラスメソッド' do
-    it 'singletonインスタンスとして動作する' do
-      expect(described_class.instance).to be_a(described_class)
-      expect(described_class.instance).to eq(described_class.instance)
-    end
-
     it 'クラスメソッドがインスタンスメソッドに委譲される' do
       owner_name = 'テストオーナー'
       

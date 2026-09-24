@@ -1,13 +1,6 @@
 require 'rails_helper'
 
 RSpec.describe RoomsController, type: :controller do
-  let(:room_registry) { RoomRegistry.instance }
-  
-  before do
-    # テスト前にレジストリをクリア
-    room_registry.instance_variable_set(:@rooms, {})
-  end
-
   describe 'GET #new' do
     it 'ルーム作成画面を表示する' do
       get :new
@@ -19,12 +12,13 @@ RSpec.describe RoomsController, type: :controller do
     let(:owner_name) { 'テストオーナー' }
 
     it 'ルームを作成してリダイレクトする' do
-      expect {
-        post :create, params: { owner_name: owner_name }
-      }.to change { room_registry.instance_variable_get(:@rooms).size }.from(0).to(1)
+      post :create, params: { owner_name: owner_name }
 
       expect(response).to have_http_status(:redirect)
       expect(response.location).to match(%r{/rooms/[a-z0-9]{6}})
+
+      room_id = response.location.match(%r{/rooms/([a-z0-9]{6})})[1]
+      expect(RoomRegistry.room_exists?(room_id)).to be true
     end
 
     it 'オーナートークンをクッキーに保存する' do
@@ -49,7 +43,7 @@ RSpec.describe RoomsController, type: :controller do
       it 'ルートパスにリダイレクトする' do
         get :show, params: { id: 'nonexistent' }
         expect(response).to redirect_to(root_path)
-        expect(flash[:alert]).to eq('部屋が存在しません')
+        expect(flash[:alert]).to eq('部屋が見つかりません。部屋が削除されたか、セッションが期限切れの可能性があります。')
       end
     end
 
